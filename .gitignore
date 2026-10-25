@@ -1,0 +1,23 @@
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+.vs/
+.idea/
+.vscode/
+*.log
+
+# 環境ごとの設定
+.env
+local.mk
+
+# Unity(Unity/ を足したときのため)
+/Unity/**/Library/
+/Unity/**/Temp/
+/Unity/**/Obj/
+/Unity/**/Logs/
+/Unity/**/UserSettings/
+/Unity/**/*.csproj
+/Unity/**/*.sln

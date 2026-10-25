@@ -1,0 +1,10 @@
+<Project>
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <Deterministic>true</Deterministic>
+    <!-- .editorconfig のコードスタイル(var・Allman・命名)をビルドで警告にする -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>
