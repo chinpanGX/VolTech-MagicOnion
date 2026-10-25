@@ -7,7 +7,7 @@ namespace VolTech.Server.Abstractions
     /// </summary>
     /// <remarks>
     /// reason が同じでも domain が違えば別のエラー。基盤の予約エラーは domain "voltech"、アプリの業務エラーはアプリの domain を使う。
-    /// 定数は errors.toml から生成する。
+    /// 定数は C# で直接書く。予約エラーはこのプロジェクトに、業務エラーはアプリの共有コードに置く。
     /// </remarks>
     public readonly struct ErrorCode : IEquatable<ErrorCode>
     {

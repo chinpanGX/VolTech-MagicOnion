@@ -10,7 +10,7 @@ proto と Rust サーバーで同じ役割を果たす [VolTech-gRPC](https://gi
 | `tests/` | テスト |
 | `docs/` | 設計と利用ガイド |
 
-サーバー側のプロジェクト(Status・Auth・Transaction・Logging・Hosting)と、Unity クライアントは順に足していく。計画は [docs/index.md](docs/index.md)。
+サーバー側の `VolTech.Server`(Status・Auth・Transaction・Logging・Hosting をフォルダーで分ける)と、Unity クライアントは順に足していく。計画は [docs/index.md](docs/index.md)。
 
 ## 開発
 
