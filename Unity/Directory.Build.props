@@ -1,0 +1,6 @@
+<Project>
+
+  <!-- Unity が作る csproj に、リポジトリ直下の Directory.Build.props(Nullable など)を効かせない。
+       Unity のコンパイルはこれを読まないので、IDE とだけ警告が食い違うのを防ぐ -->
+
+</Project>

@@ -13,7 +13,7 @@ TestResults/
 .env
 local.mk
 
-# Unity(Unity/ を足したときのため)
+# Unity(Library などの生成物とビルドの出力)
 /Unity/**/Library/
 /Unity/**/Temp/
 /Unity/**/Obj/
@@ -21,3 +21,15 @@ local.mk
 /Unity/**/UserSettings/
 /Unity/**/*.csproj
 /Unity/**/*.sln
+/Unity/**/*.slnx
+/Unity/**/[Bb]uild/
+/Unity/**/[Bb]uilds/
+/Unity/**/MemoryCaptures/
+/Unity/**/Recordings/
+/Unity/**/*_BurstDebugInformation_DoNotShip/
+/Unity/**/*.apk
+/Unity/**/*.aab
+/Unity/**/*.unitypackage
+# NuGetForUnity が packages.config から復元する
+/Unity/**/Assets/Packages/
+/Unity/**/Assets/Packages.meta

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Unity と共有するので netstandard2.1 / C# 9 に合わせる(Unity 6 の上限) -->
+    <!-- Unity と共有するので netstandard2.1 / C# 9 に合わせる(Unity 7.0 のアルファ版の上限) -->
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <RootNamespace>VolTech.Server.Abstractions</RootNamespace>

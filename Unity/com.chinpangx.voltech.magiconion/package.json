@@ -1,0 +1,12 @@
+{
+  "name": "com.chinpangx.voltech.magiconion",
+  "version": "0.1.0",
+  "displayName": "VolTech MagicOnion",
+  "description": "MagicOnion でゲームのバックエンドと通信するクライアント基盤。サーバーと共有する型(VolTech.Server.Abstractions)を含む。",
+  "unity": "7000.0",
+  "license": "MIT",
+  "author": {
+    "name": "chinpanGX",
+    "url": "https://github.com/chinpanGX"
+  }
+}

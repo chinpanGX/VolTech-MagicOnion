@@ -7,6 +7,7 @@ Oct 23, 2026 · @Shota
 新しいリポジトリ VolTech-MagicOnion で、サーバー基盤と Unity クライアントを C# + MagicOnion で提供する。proto + Rust の VolTech-gRPC と MasterDataTools は今の形のまま残し、3つは互いに参照しない。個人開発の 1 アプリのための基盤なので、Rust 版の機能のうち運用のための機能は落とし、ゲームを動かすのに要る機能だけを C# で再現する。Unity クライアントとの取り決め(エラー形式・ヘッダー)は変えない。
 
 - 確定: MasterMemory、MagicOnion、MessagePack(MasterMemory と MagicOnion が前提にする)
+- 確定: Unity は 7 系。基盤の開発用プロジェクトもアプリも Unity 7 で作り、Unity 6 には対応しない
 - 推奨(未確定): DB は PostgreSQL + Npgsql + Dapper、マイグレーションは DbUp、ログは ZLogger、テストは xUnit + Testcontainers
 - スコープ外: StreamingHub(リアルタイム対戦)、マスターデータの配信フロー、MasterDataTools(別リポジトリ)
 - スコープ外(運用の機能): 強制アップデートとメンテナンスのサーバー側の判定、アカウント停止、シャーディング
@@ -31,10 +32,14 @@ VolTech-MagicOnion/
 ├─ tests/
 │   ├─ VolTech.Server.Abstractions.Tests/
 │   └─ VolTech.Server.Tests/           単体テストと結合テスト(Testcontainers)
-└─ Unity/com.chinpangx.voltech.magiconion/
-    ├─ Runtime/Abstractions/           共有ソースの実体 + asmdef
-    └─ Runtime/Client/                 ApiCore など + asmdef
+└─ Unity/
+    ├─ com.chinpangx.voltech.magiconion/
+    │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
+    │   └─ Runtime/Client/             ApiCore など + asmdef
+    └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する
 ```
+
+`VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。
 
 | プロジェクト | 中身 | Unity と共有 |
 | --- | --- | --- |
@@ -222,10 +227,12 @@ Rust 版の `auth`・`transaction` クレートと同じ振る舞いを C# で�
 実装の前に、MagicOnion の使う版で API を確かめる。ここまでの設計は、次の名前を想定している。
 
 - [ ] サーバー: `IMagicOnionServiceFilter` と `GlobalFilters`、`ServiceContext.Items` が使う版にあるか
-- [ ] クライアント: `IService<T>.WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` が使う版にあるか
+- [x] クライアント: `IService<T>.WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` が使う版にあるか。7.11.0 にあり、Unity 7 の Editor で呼べた
 - [ ] `RpcException(status, trailers)` を server filter から投げたとき、`grpc-status-details-bin` がクライアントに届くか。届かなければ、例外の変換だけを ASP.NET Core gRPC の `Interceptor`(MagicOnion の外側)に移す
-- [ ] 使う版を決める(MagicOnion 7 系なら MessagePack は 3 系。Unity 側はどちらもソースジェネレーターでコードを生成する)
+- [x] 使う版を決める。MagicOnion 7.11.0、MessagePack 3.1.12、YetAnotherHttpHandler 1.11.7、gRPC 2.84.0、NuGetForUnity 4.5.0(一覧は README)
 - [ ] iOS の IL2CPP(AOT)で、MagicOnion のクライアントと MessagePack が動くか
+- [ ] Unity 7 が C# 14 / .NET 10 に対応したら、`Abstractions` の netstandard2.1 / C# 9 の制約を緩める。7.0 のアルファ版の時点では、Unity 6 と同じ C# 9 / .NET Standard 2.1 で、対応の時期は公表されていない
+- [x] Unity 7 で MagicOnion.Client・MessagePack・YetAnotherHttpHandler が動くか。7000.0.0a12 の Editor(CoreCLR)で、ソースジェネレーターのクライアントから h2c の Unary を呼べた。IL2CPP のプレイヤーは上の iOS の項目で確かめる。Editor の中では、NuGet で入れた gRPC ではなく Burst が同梱する gRPC 2.61.0(`Editor/Data/Tools/Burst/Client/`)が読み込まれる(アセンブリの版がどれも 2.0.0.0 のため)。Editor での確認は 2.61.0 での結果で、2.84.0 で動くかはプレイヤーのビルドで確かめる
 - [ ] Tracing(gRPC Monitor)を MessagePack で作り直すか、リリース外のツールとして割り切るか
 - [ ] `StoredAccount` のシリアライズ: protobuf のまま残すか、MessagePack に移すか(移すと保存形式が変わる)
 - [ ] DB の最終決定(PostgreSQL + Npgsql + Dapper が推奨)
