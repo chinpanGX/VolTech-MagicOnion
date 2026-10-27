@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    NuGet の版をここで一か所に固定する。依存が引き込む版(推移的な依存)も、ここに書いた版にそろえる。
+    MagicOnion 7.11.0 は MessagePack 3.1.7(既知の脆弱性 GHSA-qhrr-8q5h-9q3h)を引き込むので、3.1.12 に上げている。
+    版は README の「使う版」と Unity の packages.config に合わせる。
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="MagicOnion と gRPC">
+    <PackageVersion Include="MagicOnion.Abstractions" Version="7.11.0" />
+    <PackageVersion Include="MagicOnion.Server" Version="7.11.0" />
+    <PackageVersion Include="MagicOnion.Client" Version="7.11.0" />
+    <PackageVersion Include="MessagePack" Version="3.1.12" />
+    <PackageVersion Include="MessagePack.Annotations" Version="3.1.12" />
+    <PackageVersion Include="Grpc.AspNetCore.Server" Version="2.84.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.84.0" />
+    <PackageVersion Include="Grpc.StatusProto" Version="2.84.0" />
+    <!-- 18 系は .NET 11 向けなので、net10 では 17 系の最新を使う -->
+    <PackageVersion Include="Microsoft.NET.StringTools" Version="17.14.28" />
+  </ItemGroup>
+
+  <ItemGroup Label="DB と ID">
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="dbup-postgresql" Version="7.0.1" />
+    <PackageVersion Include="Ulid" Version="1.4.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="テスト">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
+  </ItemGroup>
+
+</Project>

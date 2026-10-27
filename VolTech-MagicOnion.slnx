@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/VolTech.Server.Abstractions/VolTech.Server.Abstractions.csproj" />
+    <Project Path="src/VolTech.Server/VolTech.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VolTech.Server.Abstractions.Tests/VolTech.Server.Abstractions.Tests.csproj" />
+    <Project Path="tests/VolTech.Server.Tests/VolTech.Server.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,3 @@
+<Project>
+  <!-- Unity が作る csproj に、リポジトリ直下の Directory.Packages.props(版の一元管理)を効かせない -->
+</Project>

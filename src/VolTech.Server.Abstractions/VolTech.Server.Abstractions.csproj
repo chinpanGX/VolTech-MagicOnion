@@ -8,6 +8,17 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- 公開 API の XML コメントは書くが、全メンバーは強制しない -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- ソースの実体は Unity パッケージにあるので、このフォルダーの .cs は拾わない -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Unity/com.chinpangx.voltech.magiconion/Runtime/Abstractions/**/*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MagicOnion.Abstractions" />
+    <PackageReference Include="MessagePack.Annotations" />
+  </ItemGroup>
 
 </Project>

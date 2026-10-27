@@ -39,20 +39,20 @@ VolTech-MagicOnion/
     └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する
 ```
 
-`VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。
+`VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。NuGet の版は、リポジトリ直下の `Directory.Packages.props` で一か所に固定する(推移的な依存も含む)。
 
 | プロジェクト | 中身 | Unity と共有 |
 | --- | --- | --- |
-| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IApiResponse` | する(netstandard2.1) |
+| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数(`ReservedErrors`)、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IDeviceService` と結果の型、`IApiResponse`(未実装) | する(netstandard2.1) |
 | `VolTech.Server` | 下の表のフォルダーすべて | しない(net10) |
 
 | `VolTech.Server` のフォルダー | 中身 |
 | --- | --- |
 | `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定、`ServerTimeFilter`・`DateChangeFilter` |
 | `Auth/` | `DeviceService`、トークン、`AuthFilter`、`IPlayerResolver` |
-| `Transaction/` | Npgsql、冪等性、ゲームログ |
-| `Logging/` | ZLogger、`RpcLogFilter` |
-| `Hosting/` | `AddVoltechServer()`。フィルターの順序をここで固定する |
+| `Transaction/` | `ITransactions`・`TxContext`、冪等性、ゲームログ、基盤のテーブルのマイグレーション(`VoltechDatabase`) |
+| `Logging/` | `RpcLogFilter`(アクセスログと例外の変換)。ログの出力先はアプリが決める(ZLogger を推奨) |
+| `Hosting/` | `AddVoltechServer()`、設定(`VoltechServerOptions`)。フィルターの順序をここで固定する |
 
 ### 2 つに分ける理由
 
@@ -68,7 +68,9 @@ VolTech-MagicOnion/
 
 - Unity から参照するのは `Abstractions` と `Runtime/Client` だけにする。サーバーのコードは Unity パッケージの外に置くので、Unity に入らない
 - `Abstractions` はソースで共有する。`.cs` の実体は UPM パッケージの中(asmdef 付き)に置き、サーバーの csproj はそのフォルダーを `Compile Include` で読み込む。UPM パッケージはパッケージの外のファイルを含められないので、実体はパッケージ側に置く。DLL を配る形と違い、サーバーと Unity のどちらからでも定義へ飛べる
-- 今の `src/VolTech.Server.Abstractions/` のソースは、Unity パッケージを作るときにパッケージ側へ移す
+- `Abstractions` は MagicOnion.Abstractions と MessagePack.Annotations を参照する(`IDeviceService` と結果の型をクライアントと共有するため)。Unity では NuGetForUnity で入れた DLL を asmdef が自動で参照する
+- Unity 7 のアナライザーは、static フィールドを持つ型に Unity の属性(`AutoStaticsCleanup` など)を求める(UAL0010)。`Abstractions` は Unity を参照できないので、static フィールドは定数と、変えられない値(`ReservedErrors` の `ErrorCode`)だけにする
+- C# 9 の Unity は nullable をファイルごとに有効にする必要がある。`?` を使うファイルの先頭に `#nullable enable` を書く
 - 結合テストが遅くなり CI で分けたくなったら、そのときにテストプロジェクトを分ける
 
 ## アプリからの使い方
@@ -102,6 +104,34 @@ client → shared, VolTech の Unity パッケージ
 - アプリのサーバーは、基盤と同じ版の NuGet パッケージ(MagicOnion など)を使う。版が違うとビルドで警告かエラーになるので、基盤が使う版を README に書く
 - UPM の `package.json` は NuGet のパッケージを依存に書けない。Unity 側の MagicOnion.Client・MessagePack などは、アプリが NuGetForUnity などで入れる。入れるものは README の手順に書く
 
+アプリのサーバーの `Program.cs` は次の形になる。
+
+```csharp
+var connectionString = builder.Configuration.GetConnectionString("Default")!;
+builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+builder.Services.AddScoped<IPlayerResolver, PlayerResolver>();   // アプリが実装する
+builder.Services.AddVoltechServer(options => builder.Configuration.GetSection("Voltech").Bind(options));
+
+var app = builder.Build();
+VoltechDatabase.Migrate(connectionString);                         // 基盤のテーブル。アプリのマイグレーションより先に
+app.MapMagicOnionService();
+```
+
+ハンドラーは、書き込みを `ITransactions.RunAsync` で包む。
+
+```csharp
+public async UnaryResult<DrawResult> DrawAsync(int count)
+{
+    return await transactions.RunAsync(Context, async tx =>
+    {
+        var today = Context.GetGameDate();
+        var player = Context.GetAuthContext().PlayerId;
+        // tx.CreateCommand(...) で読み書きし、所持データの変化は tx.WriteGameLog(GameLog.Quantity(...)) で残す
+        ...
+    });
+}
+```
+
 ## フィルター構成と順序
 
 Rust 版の Layer と同じ順序で、MagicOnion のサーバーフィルターを外側から重ねる。順序を変えると、クライアントとの取り決め(再認証・エラー変換)が崩れる。
@@ -114,7 +144,7 @@ Rust 版の Layer と同じ順序で、MagicOnion のサーバーフィルター
 
 トランザクションと冪等性をフィルターにしないのは、判定と保存済みレスポンスの書き込みを、本体と同じトランザクションの中で行う必要があるため(Rust 版の `Transactions::run` と同じ理由)。
 
-`AddVoltechServer()` が 1〜4 を `MagicOnionOptions.GlobalFilters` に決まった順で登録し、アプリが順序を入れ替えられないようにする。対象は Unary のみ。StreamingHub は別に設計する。
+`AddVoltechServer()` が 1〜4 を `MagicOnionOptions.GlobalFilters` に決まった順で登録し、アプリが順序を入れ替えられないようにする。`Order` は `int.MinValue` から順に 1 ずつ増やす(`VoltechServerExtensions.FilterOrder`)。アプリのフィルター(`Order` の既定は `int.MaxValue`)は、必ず基盤より内側で動く。対象は Unary のみ。StreamingHub は別に設計する。
 
 ### MagicOnion で実装するときの注意
 
@@ -180,15 +210,21 @@ Rust 版の `auth`・`transaction` クレートと同じ振る舞いを C# で�
 - `AuthFilter` が `authorization: Bearer` を検証し、`AuthContext`(device\_id・player\_id・player\_created)を `ServiceContext.Items` に入れる
 - 無効・期限切れは `UNAUTHENTICATED`。クライアントはトークンを取り直し、1 回だけ自動で再送する
 - プレイヤーの状態は `IPlayerResolver`(NotCreated / Active)をアプリが実装する。アカウント停止(Suspended と `ACCOUNT_SUSPENDED`)は持たない
-- トークンの有効期限は既定 1 時間(Rust 版と同じ)
+- トークンの有効期限は既定 1 時間(Rust 版と同じ)。`VoltechServerOptions.AccessTokenLifetime` で変えられる
+- トークンは 256 ビットの乱数の 16 進(小文字 64 文字)。デバイスごとに 1 つだけ持ち、発行し直すと古いトークンは無効になる。期限は DB の時刻ではなく `TimeProvider` で比べる(テストで時刻を進められる)
+- secretKey は PBKDF2-SHA256(.NET 標準)でハッシュにして保存する。Rust 版は Argon2 だったが、secretKey はクライアントが作る 16〜128 文字の乱数で、人が覚えるパスワードではないので、遅いハッシュで総当たりに備える必要がない。依存を増やさないほうを選んだ
+- device_id と player_id は ULID(Cysharp の `Ulid`)。DB には player_id を `uuid` で持つ
 
 ### 冪等性とトランザクション(`Transaction/`)
 
 - ハンドラーの本体を `ITransactions.RunAsync(player, tx => ...)` で包む。成功でコミット、失敗でロールバックする
 - 冪等性の対象の RPC(`[NoSideEffects]` の付かないもの)は、同じ `x-request-id` の再送で本体を呼ばず、保存済みのレスポンスを返す
-- 保存先は `last_responses(player_id, request_id, rpc, response)`。本体と同じトランザクションで書き、レスポンスは MessagePack のバイト列で持つ。プレイヤー作成時に同じトランザクションで初期行を作る
+- 保存先は `last_responses(player_id, request_id, rpc, response)`。本体と同じトランザクションで書き、レスポンスは MessagePack のバイト列(MagicOnion と同じシリアライザー)で持つ
+- 行が無ければ、`RunAsync` が同じトランザクションの中で作ってからロックする(`INSERT ... ON CONFLICT DO NOTHING` → `SELECT ... FOR UPDATE`)。Rust 版(MySQL)は隙間のロックによるデッドロックを避けるため別のトランザクションで作っていたが、PostgreSQL は隙間のロックを取らないので要らない。アプリがプレイヤー作成時に行を作る必要もない
+- `x-request-id` が無い・形が違うときと、別の RPC で使い回したときは `INVALID_ARGUMENT`
+- `[SkipAuth]` の RPC はプレイヤーが決まらないので、`RunAsync` を使っても冪等性の対象にしない(普通のトランザクションで動かす)
 - `x-request-id` を別の RPC で使い回したら warn を出す。再送で保存済みのレスポンスを返したときは、ゲームログを書かない
-- `[NoSideEffects]` の RPC は読み取り専用のトランザクションにする
+- `[NoSideEffects]` の RPC は読み取り専用のトランザクション(`SET TRANSACTION READ ONLY`)にする。書き込むと DB がエラーを返すので、宣言の間違いに開発中に気づける
 
 ### ゲームログ
 
@@ -197,10 +233,13 @@ Rust 版の `auth`・`transaction` クレートと同じ振る舞いを C# で�
 - 出力先は DB の `game_logs`。本体と同じトランザクションで書く。ロールバックされた処理のログは残らず、コミットされた変更には必ずログがある。ログとデータが食い違わないので、復帰処理の根拠にできる
 - `player_id`・`request_id`・RPC・時刻は基盤が付ける。アプリは何が変わったか(種類と内容)だけを渡す
 - 再送で保存済みのレスポンスを返したときは書かない。同じ変更が二重に記録されないようにするため
+- 形は Rust 版と同じ。数量の変化は `GameLog.Quantity(kind, delta, after, reason)`、それ以外は `GameLog.Event(kind, reason)` で作り、`Target(id)` と `Field(name, value)` を足す。種別で変わる値は `body`(jsonb)にまとめる
 
 ### DB 接続
 
 単一の DB で動かす。シャーディング(`IShardResolver`)は持たず、接続は `NpgsqlDataSource` を DI に 1 つ登録して取る。
+
+基盤のテーブルは `VoltechDatabase.Migrate()` が DbUp で作る。適用済みの記録は `_voltech_migrations` に入れ、アプリのマイグレーションの記録とは分ける(混ぜると、互いに相手の分を知らないマイグレーションとして扱う)。基盤は SQL を Npgsql で直接書き、Dapper には依存しない。アプリは `TxContext.Connection`・`Transaction` を Dapper に渡して使える。
 
 ## クライアント(Unity)側の変更点
 
@@ -226,15 +265,18 @@ Rust 版の `auth`・`transaction` クレートと同じ振る舞いを C# で�
 
 実装の前に、MagicOnion の使う版で API を確かめる。ここまでの設計は、次の名前を想定している。
 
-- [ ] サーバー: `IMagicOnionServiceFilter` と `GlobalFilters`、`ServiceContext.Items` が使う版にあるか
+- [x] サーバー: `IMagicOnionServiceFilter` と `GlobalFilters`、`ServiceContext.Items` が使う版にあるか。7.11.0 にある。`ServiceContext.ServiceName`・`MethodName` で RPC の名前も読めるので、Rust 版の `RpcMethodLayer` に当たる部品は要らない。`Order` が小さいほど外側で動くことも、テストで確かめた
 - [x] クライアント: `IService<T>.WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` が使う版にあるか。7.11.0 にあり、Unity 7 の Editor で呼べた
-- [ ] `RpcException(status, trailers)` を server filter から投げたとき、`grpc-status-details-bin` がクライアントに届くか。届かなければ、例外の変換だけを ASP.NET Core gRPC の `Interceptor`(MagicOnion の外側)に移す
+- [x] `RpcException(status, trailers)` を server filter から投げたとき、`grpc-status-details-bin` がクライアントに届くか。届く(.NET の MagicOnion クライアントで確かめた。`tests/VolTech.Server.Tests` の `FilterTests`)。業務エラーのレスポンスにも `x-server-time`・`x-game-date` が付く。Unity(YetAnotherHttpHandler)で届くかは、クライアントを移すときに確かめる
 - [x] 使う版を決める。MagicOnion 7.11.0、MessagePack 3.1.12、YetAnotherHttpHandler 1.11.7、gRPC 2.84.0、NuGetForUnity 4.5.0(一覧は README)
 - [ ] iOS の IL2CPP(AOT)で、MagicOnion のクライアントと MessagePack が動くか
 - [ ] Unity 7 が C# 14 / .NET 10 に対応したら、`Abstractions` の netstandard2.1 / C# 9 の制約を緩める。7.0 のアルファ版の時点では、Unity 6 と同じ C# 9 / .NET Standard 2.1 で、対応の時期は公表されていない
 - [x] Unity 7 で MagicOnion.Client・MessagePack・YetAnotherHttpHandler が動くか。7000.0.0a12 の Editor(CoreCLR)で、ソースジェネレーターのクライアントから h2c の Unary を呼べた。IL2CPP のプレイヤーは上の iOS の項目で確かめる。Editor の中では、NuGet で入れた gRPC ではなく Burst が同梱する gRPC 2.61.0(`Editor/Data/Tools/Burst/Client/`)が読み込まれる(アセンブリの版がどれも 2.0.0.0 のため)。Editor での確認は 2.61.0 での結果で、2.84.0 で動くかはプレイヤーのビルドで確かめる
 - [ ] Tracing(gRPC Monitor)を MessagePack で作り直すか、リリース外のツールとして割り切るか
 - [ ] `StoredAccount` のシリアライズ: protobuf のまま残すか、MessagePack に移すか(移すと保存形式が変わる)
-- [ ] DB の最終決定(PostgreSQL + Npgsql + Dapper が推奨)
+- [x] DB の最終決定。PostgreSQL + Npgsql、マイグレーションは DbUp。基盤は Dapper に依存しない(アプリが使うのは自由)
 - [ ] StreamingHub を使う場合の認証・再接続の設計(ClientFilter は Unary のみ対応)
-- [ ] ゲーム内の日付の設定形式(日付が変わる時刻など)。Rust 版の `server_status.toml` のうち、ゲーム日付の部分だけを持つ
+- [x] ゲーム内の日付の設定形式。`VoltechServerOptions.GameDay`(`ResetHour`・`TimeZone`)。ASP.NET Core の設定(`appsettings.json` など)から入れ、`IOptionsMonitor` で読むので、ファイルを書き換えると読み直す。書き間違いは起動時に検証して止める
+- [ ] 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組み(Rust 版のコレクター)
+- [ ] ログの出力形式。基盤は `ILogger` のスコープ(`rpc.method`・`request_id`・`player_id`・`replayed`)とアクセスログ(`rpc finished`)を出すだけで、JSON での出力(ZLogger)はアプリの設定に任せている。基盤で決めるか
+- [ ] Unity の IL2CPP で、`Abstractions` の MessagePack の型(`RegisterResult` など)のフォーマッターが生成されるか

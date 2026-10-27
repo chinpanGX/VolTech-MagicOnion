@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 
@@ -9,8 +11,6 @@ namespace VolTech.Server.Abstractions
     /// </summary>
     public class BusinessException : Exception
     {
-        private static readonly IReadOnlyDictionary<string, string> emptyMetadata = new Dictionary<string, string>();
-
         /// <summary>
         /// エラーコードとメッセージ(と表示用の値)から作る。
         /// </summary>
@@ -25,7 +25,8 @@ namespace VolTech.Server.Abstractions
 
             if (metadata == null)
             {
-                Metadata = emptyMetadata;
+                // static な空の辞書は持たない(Unity 7 は static フィールドに属性を求めるが、ここは Unity を参照できない)
+                Metadata = new Dictionary<string, string>();
                 return;
             }
 

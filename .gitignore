@@ -33,3 +33,5 @@ local.mk
 # NuGetForUnity が packages.config から復元する
 /Unity/**/Assets/Packages/
 /Unity/**/Assets/Packages.meta
+
+.obsidian/
