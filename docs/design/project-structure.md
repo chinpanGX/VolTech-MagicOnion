@@ -1,0 +1,60 @@
+# プロジェクト構成
+
+プロジェクトは、Unity と共有するかどうかの 1 本の境界で 2 つに分ける。サーバー側の関心ごと(認証・日付・トランザクションなど)は、プロジェクトではなくフォルダーと名前空間で分ける。
+
+```
+VolTech-MagicOnion/
+├─ src/
+│   ├─ VolTech.Server.Abstractions/    csproj だけ。ソースは Unity パッケージ側を読み込む
+│   └─ VolTech.Server/                 サーバー側の全部
+├─ tests/
+│   ├─ VolTech.Server.Abstractions.Tests/
+│   └─ VolTech.Server.Tests/           単体テストと結合テスト(Testcontainers)
+└─ Unity/
+    ├─ com.chinpangx.voltech.magiconion/
+    │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
+    │   └─ Runtime/Client/             ApiCore など + asmdef
+    └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する
+```
+
+`VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。
+
+| プロジェクト | 中身 | Unity と共有 |
+| --- | --- | --- |
+| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IApiResponse` | する(netstandard2.1) |
+| `VolTech.Server` | 下の表のフォルダーすべて | しない(net10) |
+
+| `VolTech.Server` のフォルダー | 中身 |
+| --- | --- |
+| `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定、`ServerTimeFilter`・`DateChangeFilter` |
+| `Auth/` | `DeviceService`、トークン、`AuthFilter`、`IPlayerResolver` |
+| `Transaction/` | Npgsql、冪等性、ゲームログ |
+| `Logging/` | ZLogger、`RpcLogFilter` |
+| `Hosting/` | `AddVoltechServer()`。フィルターの順序をここで固定する |
+
+## 2 つに分ける理由
+
+最初は Rust 版の 5 クレートと 1 対 1 に分ける案だった。別の製品として作り直すことにしたので、その理由はなくなった。中身を見ると、細かく分けても得るものがない。
+
+- 依存が切れない。`Auth` は端末の登録で DB を使うので `Transaction` に依存し、`Hosting` はすべてに依存する。アプリは `Hosting` を参照するので、結局すべてが入る
+- `internal` が使えない。プロジェクトをまたいで型を渡すため、フィルター本体や RPC ごとの設定表まで `public` にするか、`InternalsVisibleTo` を並べることになる。1 つにまとめれば、公開するのは `AddVoltechServer()`・`ITransactions`・`IPlayerResolver`・`AuthContext` の取り出し口などに絞れる
+- 本当に必要な境界は「Unity と共有するか」だけ。`Abstractions` は netstandard2.1 で、サーバー専用の依存(Npgsql など)を持ち込めないので、ここだけは別のプロジェクトにする
+
+関心ごとの分離は、`internal` で公開範囲を絞ることと、依存の向きを確かめるテスト(例: `Status` の名前空間は Npgsql を参照しない)で守る。テストは NetArchTest などで書き、ルールをコードとして残す。
+
+## 共有のしかた
+
+- Unity から参照するのは `Abstractions` と `Runtime/Client` だけにする。サーバーのコードは Unity パッケージの外に置くので、Unity に入らない
+- `Abstractions` はソースで共有する。`.cs` の実体は UPM パッケージの中(asmdef 付き)に置き、サーバーの csproj はそのフォルダーを `Compile Include` で読み込む。UPM パッケージはパッケージの外のファイルを含められないので、実体はパッケージ側に置く。DLL を配る形と違い、サーバーと Unity のどちらからでも定義へ飛べる
+- 今の `src/VolTech.Server.Abstractions/` のソースは、Unity パッケージを作るときにパッケージ側へ移す
+- 結合テストが遅くなり CI で分けたくなったら、そのときにテストプロジェクトを分ける
+
+## アプリからの参照
+
+アプリのリポジトリには、基盤をサブモジュールとして置く。フォルダーの置き方と手順は [利用ガイドの導入](../guide/getting-started.md)。ここには、その形にした理由を書く。
+
+- NuGet で配らず、プロジェクト参照と UPM のローカルパッケージで使う。ソースが手元にあるので、サーバーからも Unity からも基盤の定義へ飛べる
+- アプリの `shared/` も `Abstractions` と同じ仕組みにする。`.cs` の実体は UPM パッケージに置き、サーバー側は csproj から読み込む
+- サブモジュールの置き場所を `Packages/` にしないのは、Unity の `client/Packages/` と紛らわしいため
+- アプリのサーバーは、基盤と同じ版の NuGet パッケージ(MagicOnion など)を使う。版が違うとビルドで警告かエラーになるので、基盤が使う版を利用ガイドに書く
+- UPM の `package.json` は NuGet のパッケージを依存に書けない。Unity 側の MagicOnion.Client・MessagePack などは、アプリが NuGetForUnity などで入れる。入れるものは利用ガイドに書く

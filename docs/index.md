@@ -1,44 +1,44 @@
 # docs
 
-設計と利用ガイドの置き場所。設計・実装・ドキュメントは、このリポジトリの中で行き来しながら更新する。
+| フォルダー | 読む人 | 中身 |
+|---|---|---|
+| [spec/](spec/index.md) | 基盤を作る人 | 仕様書。基盤が何をするか(振る舞いと、クライアントとの取り決め) |
+| [design/](design/index.md) | 基盤を作る人 | 実装設計書。仕様を C# と MagicOnion でどう作るか |
+| [guide/](guide/index.md) | 基盤を使う人 | 利用ガイド。アプリへの導入と使い方 |
 
-## 設計
-
-- [C#サーバー基盤 設計書(MagicOnion + PostgreSQL)](design.md): プロジェクト構成、フィルターの順序、エラー設計、ヘッダー、認証・冪等性・トランザクション、Unity クライアント側の変更点
+仕様書を先に直してから、実装設計書とコードを直す。仕様書・実装設計書・コードが食い違ったら、仕様書に合わせる。
 
 ## 計画しているプロジェクト
 
-Unity と共有する `Abstractions` と、サーバー側の全部を持つ `VolTech.Server` の 2 つに分ける。サーバー側の関心ごとはフォルダーで分ける。理由は [設計書](design.md#2-つに分ける理由)。
+Unity と共有する `Abstractions` と、サーバー側の全部を持つ `VolTech.Server` の 2 つに分ける。サーバー側の関心ごとはフォルダーで分ける。理由は [プロジェクト構成](design/project-structure.md#2-つに分ける理由)。
 
 | プロジェクト / フォルダー | 中身 | 状態 |
 |---|---|---|
-| `VolTech.Server.Abstractions` | `ErrorCode`、`ReservedErrors`、`BusinessException`、ヘッダー名、属性、`IDeviceService`。Unity と共有(netstandard2.1)。ソースは Unity パッケージの `Runtime/Abstractions/` | あり |
-| `VolTech.Server` | サーバー側の全部。下のフォルダーに分ける | あり |
-| `VolTech.Server` の `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定 | あり |
-| `VolTech.Server` の `Auth/` | `DeviceService`、トークン、`AuthFilter` | あり |
-| `VolTech.Server` の `Transaction/` | `ITransactions`、冪等性、ゲームログ、マイグレーション | あり。共通レスポンス項目(コレクター)は未着手 |
-| `VolTech.Server` の `Logging/` | `RpcLogFilter`(アクセスログと例外の変換) | あり。出力形式(ZLogger)はアプリに任せている |
-| `VolTech.Server` の `Hosting/` | `AddVoltechServer()`。フィルターの順序を固定する | あり |
+| `VolTech.Server.Abstractions` | `ErrorCode`、`BusinessException`、ヘッダー名、属性。Unity と共有(netstandard2.1) | あり |
+| `VolTech.Server` の `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定 | 未着手 |
+| `VolTech.Server` の `Auth/` | `DeviceService`、トークン、`AuthFilter` | 未着手 |
+| `VolTech.Server` の `Transaction/` | Npgsql、冪等性、ゲームログ | 未着手 |
+| `VolTech.Server` の `Logging/` | ZLogger、`RpcLogFilter` | 未着手 |
+| `VolTech.Server` の `Hosting/` | `AddVoltechServer()`。フィルターの順序を固定する | 未着手 |
 | Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | 骨組みだけ(`package.json` と asmdef) |
 | `Unity/VolTech.Sandbox` | 開発用の Unity 7 プロジェクト。パッケージを `file:` で参照する | あり |
 
-## 先に確かめること
+## 確かめること
 
 実装に入る前に、最小のサーバーとクライアントで次を確かめる。
 
-- [x] サーバーのフィルターで `RpcException(status, trailers)` を投げたとき、`grpc-status-details-bin` がクライアントまで届くか。.NET の MagicOnion クライアントで届いた(2026-10-27、`tests/VolTech.Server.Tests` の `FilterTests`)。Unity のクライアントでは、クライアントを移すときに確かめる
-- [x] クライアントで、呼び出しごとのヘッダーと締め切りを渡し、レスポンスヘッダー(`x-server-time` など)を読めるか。`WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` で読めた(2026-10-26、Sandbox の `Assets/Smoke/`)
+- [ ] サーバー: `IMagicOnionServiceFilter` と `GlobalFilters`、`ServiceContext.Items` が使う版(7.11.0)にあるか
+- [ ] サーバーのフィルターで `RpcException(status, trailers)` を投げたとき、`grpc-status-details-bin` がクライアントまで届くか。届かなければ、例外の変換だけを ASP.NET Core gRPC の `Interceptor`(MagicOnion の外側)に移す
+- [x] クライアントで、呼び出しごとのヘッダーと締め切りを渡し、レスポンスヘッダー(`x-server-time` など)を読めるか。7.11.0 の `WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` で読めた(2026-10-26、Sandbox の `Assets/Smoke/`)
 - [ ] iOS の IL2CPP(AOT)で、MagicOnion のクライアントと MessagePack が動くか
-- [x] Unity 7 で MagicOnion.Client・MessagePack・YetAnotherHttpHandler が動くか。7000.0.0a12 の Editor(CoreCLR)で、ソースジェネレーターのクライアントから h2c の Unary を呼べた(2026-10-26)。IL2CPP のプレイヤーは未確認。Editor の中では、NuGet で入れた gRPC ではなく Burst が同梱する gRPC 2.61.0(`Editor/Data/Tools/Burst/Client/`)が読み込まれる(アセンブリの版がどれも 2.0.0.0 のため)。Editor での確認は 2.61.0 での結果で、2.84.0 で動くかはプレイヤーのビルドで確かめる
-- [x] 使う版の MagicOnion で、サーバーフィルターの API 名(`GlobalFilters`・`ServiceContext.Items`)が合っているか。7.11.0 で合っていた。`Order` が小さいほど外側で動く(2026-10-27)
+- [x] Unity 7 で MagicOnion.Client・MessagePack・YetAnotherHttpHandler が動くか。7000.0.0a12 の Editor(CoreCLR)で、ソースジェネレーターのクライアントから h2c の Unary を呼べた(2026-10-26)。IL2CPP のプレイヤーは上の iOS の項目で確かめる。Editor の中では、NuGet で入れた gRPC ではなく Burst が同梱する gRPC 2.61.0(`Editor/Data/Tools/Burst/Client/`)が読み込まれる(アセンブリの版がどれも 2.0.0.0 のため)。Editor での確認は 2.61.0 での結果で、2.84.0 で動くかはプレイヤーのビルドで確かめる
+- [x] 使う版を決める。MagicOnion 7.11.0、MessagePack 3.1.12、YetAnotherHttpHandler 1.11.7、gRPC 2.84.0、NuGetForUnity 4.5.0(一覧は [導入](guide/getting-started.md#使う版))
 
-## 進め方
+## 決めること
 
-サーバー側(`VolTech.Server`)は、設計書の 5 つのフォルダーをすべて実装した(2026-10-27)。テストは DB を使わないもの(フィルター・エラーの形・ヘッダー)と、PostgreSQL をコンテナで動かすもの(認証・冪等性・ゲームログ)がある。残りは次の順に進める。
-
-1. Windows の IL2CPP でプレイヤーをビルドし、gRPC 2.84.0 とソースジェネレーターのクライアント、`Abstractions` の MessagePack の型が動くか確かめる。iOS は Mac が要る
-2. Unity クライアントの `ApiCore` を MagicOnion 版にする([設計書](design.md#クライアントunity側の変更点))。`DeviceTokenProvider` は `IDeviceService` を呼ぶ形にする
-3. 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組みを足す
-4. 依存の向きのテスト(例: `Status` の名前空間は Npgsql を参照しない)を足す
-
-確認に使ったクライアントは Sandbox の `Assets/Smoke/` にある。`ISmokeService.cs`(`Assets/Smoke/Shared/`)はサーバーとクライアントの両方で読み込む前提で、相手のサーバーはまだリポジトリに入れていない(一時的に作って確かめた)。
+- [ ] DB の最終決定(PostgreSQL + Npgsql + Dapper が推奨)
+- [ ] ゲーム内の日付の設定形式(日付が変わる時刻など)。Rust 版の `server_status.toml` のうち、ゲーム日付の部分だけを持つ
+- [ ] `StoredAccount` のシリアライズ: protobuf のまま残すか、MessagePack に移すか(移すと保存形式が変わる)
+- [ ] Tracing(gRPC Monitor)を MessagePack で作り直すか、リリース外のツールとして割り切るか
+- [ ] StreamingHub を使う場合の認証・再接続の設計(ClientFilter は Unary のみ対応)
+- [ ] Unity 7 が C# 14 / .NET 10 に対応したら、`Abstractions` の netstandard2.1 / C# 9 の制約を緩める。7.0 のアルファ版の時点では、Unity 6 と同じ C# 9 / .NET Standard 2.1 で、対応の時期は公表されていない
