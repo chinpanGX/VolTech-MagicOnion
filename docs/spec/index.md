@@ -10,7 +10,8 @@ Oct 23, 2026 · @Shota
 
 - 確定: MasterMemory、MagicOnion、MessagePack(MasterMemory と MagicOnion が前提にする)
 - 確定: Unity は 7 系。基盤の開発用プロジェクトもアプリも Unity 7 で作り、Unity 6 には対応しない
-- 推奨(未確定): DB は PostgreSQL + Npgsql + Dapper、マイグレーションは DbUp、ログは ZLogger、テストは xUnit + Testcontainers
+- 確定: DB は PostgreSQL + Npgsql、マイグレーションは DbUp、テストは xUnit + Testcontainers。基盤は Dapper に依存しない(アプリが使うのは自由)
+- 推奨(未確定): ログの出力は ZLogger。基盤は `ILogger` に出すだけで、出力先と形式はアプリが決める
 - スコープ外: StreamingHub(リアルタイム対戦)、マスターデータの配信フロー、MasterDataTools(別リポジトリ)
 - スコープ外(運用の機能): 強制アップデートとメンテナンスのサーバー側の判定、アカウント停止、シャーディング
 

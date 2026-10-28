@@ -7,6 +7,7 @@
 | 業務エラー(日付変更を含む) | `FAILED_PRECONDITION` | アプリの業務エラーはアプリの domain、基盤の予約エラーは domain `voltech` |
 | サーバー内部エラー | `INTERNAL` | `voltech` / `INTERNAL_ERROR`。詳細はログにだけ出す |
 | 認証エラー | `UNAUTHENTICATED` | なし |
+| `x-request-id` が無い・形が違う・別の RPC で使い回した | `INVALID_ARGUMENT` | なし |
 
 - 運び方: `google.rpc.Status` の details に `ErrorInfo` を入れ、トレーラー `grpc-status-details-bin` で返す
 - `metadata["action"]` に `ERROR_ACTION_STAY / RETRY / HOME / TITLE / UPDATE` を入れると、クライアントの既定の action を上書きできる

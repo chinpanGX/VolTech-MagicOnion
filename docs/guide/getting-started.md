@@ -42,7 +42,23 @@ client → shared, VolTech の Unity パッケージ
 | YetAnotherHttpHandler | 1.11.7 | UPM |
 | Grpc.Net.Client / Grpc.Core.Api / Grpc.Net.Common | 2.84.0 | NuGetForUnity(MagicOnion.Client の依存。最低の版で入るので、最新を明示して入れる) |
 | NuGetForUnity | 4.5.0 | UPM |
+| Npgsql | 10.0.3 | (サーバーだけ) |
+| dbup-postgresql | 7.0.1 | (サーバーだけ) |
+| Ulid | 1.4.1 | (サーバーだけ) |
+| Grpc.StatusProto | 2.84.0 | (サーバーだけ) |
 
 UPM の `package.json` は NuGet のパッケージを依存に書けないので、Unity 側の上のライブラリはアプリが入れる。UPM の git URL は `Unity/VolTech.Sandbox/Packages/manifest.json`、NuGet のパッケージは `Unity/VolTech.Sandbox/Assets/packages.config` が見本になる。YetAnotherHttpHandler が要る System.IO.Pipelines と System.Runtime.CompilerServices.Unsafe は、Unity 7 が持っているので NuGet から入れない。
 
-NuGetForUnity は依存を「求められる最低の版」で入れるので、依存も最新に上げて `packages.config` に固定する。サーバーも同じ理由で、`Grpc.AspNetCore.Server` 2.84.0 と `MessagePack` 3.1.12 を直接参照する(MagicOnion.Server 7.11.0 が引き込む MessagePack 3.1.7 には既知の脆弱性 GHSA-qhrr-8q5h-9q3h がある)。`Microsoft.NET.StringTools` は 18 系が .NET 11 向けなので、サーバー(net10)では 17 系の最新を使う。
+### Microsoft.Bcl.AsyncInterfaces を手で置く
+
+IL2CPP でプレイヤーをビルドすると、UnityLinker が `IL1009: Assembly reference 'Microsoft.Bcl.AsyncInterfaces' could not be resolved` で止まる(Unity 7000.0.0a12)。
+
+- `MagicOnion.Client` が依存する `Microsoft.Bcl.TimeProvider` には netstandard2.0 版しかなく、`IAsyncDisposable` を `Microsoft.Bcl.AsyncInterfaces` から参照する
+- Unity 7 は `Microsoft.Bcl.AsyncInterfaces` を `Editor/Data/BCLExtensions/runtime/netstandard2.1/` に持っているので、NuGetForUnity は入れさせない(Install が押せない)。Editor ではこれが読み込まれるので動く
+- プレイヤーのビルドでは、リンカーは `BCLExtensions/runtime/net10.0/` だけを探す。そこにはこの DLL が無い
+
+nuget.org の `Microsoft.Bcl.AsyncInterfaces` 10.0.13 から `lib/netstandard2.1/Microsoft.Bcl.AsyncInterfaces.dll` を取り出し、`Assets/Plugins/Microsoft.Bcl.AsyncInterfaces/` に置く。Inspector で Editor を外し、プレイヤーのビルドにだけ含める(Editor の持つ DLL と重ねないため)。見本は Sandbox の同じ場所にある。Unity が net10.0 側にこの DLL を足したら要らなくなる。
+
+### 版の固定
+
+NuGetForUnity は依存を「求められる最低の版」で入れるので、依存も最新に上げて `packages.config` に固定する。基盤のサーバーは `Directory.Packages.props` で版を一か所に固定し、推移的な依存もその版にそろえる(MagicOnion 7.11.0 が引き込む MessagePack 3.1.7 には既知の脆弱性 GHSA-qhrr-8q5h-9q3h があるので、3.1.12 に上げている)。アプリのサーバーも、同じ版を固定する。`Microsoft.NET.StringTools` は 18 系が .NET 11 向けなので、サーバー(net10)では 17 系の最新を使う。

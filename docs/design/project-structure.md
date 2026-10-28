@@ -17,20 +17,21 @@ VolTech-MagicOnion/
     └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する
 ```
 
-`VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。
+`VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。NuGet の版は、リポジトリ直下の `Directory.Packages.props` で一か所に固定する(推移的な依存も含む)。
 
 | プロジェクト | 中身 | Unity と共有 |
 | --- | --- | --- |
-| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IApiResponse` | する(netstandard2.1) |
+| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数(`ReservedErrors`)、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IDeviceService` と結果の型、`IApiResponse`(未実装) | する(netstandard2.1) |
 | `VolTech.Server` | 下の表のフォルダーすべて | しない(net10) |
 
 | `VolTech.Server` のフォルダー | 中身 |
 | --- | --- |
 | `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定、`ServerTimeFilter`・`DateChangeFilter` |
 | `Auth/` | `DeviceService`、トークン、`AuthFilter`、`IPlayerResolver` |
-| `Transaction/` | Npgsql、冪等性、ゲームログ |
-| `Logging/` | ZLogger、`RpcLogFilter` |
-| `Hosting/` | `AddVoltechServer()`。フィルターの順序をここで固定する |
+| `Transaction/` | `ITransactions`・`TxContext`、冪等性、ゲームログ、基盤のテーブルのマイグレーション(`VoltechDatabase`) |
+| `Logging/` | `RpcLogFilter`(アクセスログと例外の変換)。ログの出力先はアプリが決める(ZLogger を推奨) |
+| `Hosting/` | `AddVoltechServer()`、設定(`VoltechServerOptions`)、`ServiceContext` の拡張メソッド。フィルターの順序をここで固定する |
+| `Internal/` | フィルターどうしで共有する内部の部品(RPC ごとの設定表、エラーの組み立て) |
 
 ## 2 つに分ける理由
 
@@ -40,13 +41,15 @@ VolTech-MagicOnion/
 - `internal` が使えない。プロジェクトをまたいで型を渡すため、フィルター本体や RPC ごとの設定表まで `public` にするか、`InternalsVisibleTo` を並べることになる。1 つにまとめれば、公開するのは `AddVoltechServer()`・`ITransactions`・`IPlayerResolver`・`AuthContext` の取り出し口などに絞れる
 - 本当に必要な境界は「Unity と共有するか」だけ。`Abstractions` は netstandard2.1 で、サーバー専用の依存(Npgsql など)を持ち込めないので、ここだけは別のプロジェクトにする
 
-関心ごとの分離は、`internal` で公開範囲を絞ることと、依存の向きを確かめるテスト(例: `Status` の名前空間は Npgsql を参照しない)で守る。テストは NetArchTest などで書き、ルールをコードとして残す。
+関心ごとの分離は、`internal` で公開範囲を絞ることと、依存の向きを確かめるテスト(例: `Status` の名前空間は Npgsql を参照しない)で守る。テストは NetArchTest などで書き、ルールをコードとして残す(依存の向きのテストは未着手)。
 
 ## 共有のしかた
 
 - Unity から参照するのは `Abstractions` と `Runtime/Client` だけにする。サーバーのコードは Unity パッケージの外に置くので、Unity に入らない
 - `Abstractions` はソースで共有する。`.cs` の実体は UPM パッケージの中(asmdef 付き)に置き、サーバーの csproj はそのフォルダーを `Compile Include` で読み込む。UPM パッケージはパッケージの外のファイルを含められないので、実体はパッケージ側に置く。DLL を配る形と違い、サーバーと Unity のどちらからでも定義へ飛べる
-- 今の `src/VolTech.Server.Abstractions/` のソースは、Unity パッケージを作るときにパッケージ側へ移す
+- `Abstractions` は MagicOnion.Abstractions と MessagePack.Annotations を参照する(`IDeviceService` と結果の型をクライアントと共有するため)。Unity では NuGetForUnity で入れた DLL を asmdef が自動で参照する
+- Unity 7 のアナライザーは、static フィールドを持つ型に Unity の属性(`AutoStaticsCleanup` など)を求める(UAL0010)。`Abstractions` は Unity を参照できないので、static フィールドは定数と、変えられない値(`ReservedErrors` の `ErrorCode`)だけにする
+- C# 9 の Unity は nullable をファイルごとに有効にする必要がある。`?` を使うファイルの先頭に `#nullable enable` を書く
 - 結合テストが遅くなり CI で分けたくなったら、そのときにテストプロジェクトを分ける
 
 ## アプリからの参照
