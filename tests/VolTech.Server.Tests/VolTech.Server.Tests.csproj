@@ -21,6 +21,7 @@
     <PackageReference Include="MagicOnion.Client" />
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Grpc.StatusProto" />
+    <PackageReference Include="NetArchTest.Rules" />
   </ItemGroup>
 
   <ItemGroup>
