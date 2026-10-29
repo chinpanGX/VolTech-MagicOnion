@@ -60,7 +60,8 @@ public async UnaryResult<DrawResult> DrawAsync(int count)
 
 - 業務エラーは `BusinessException(ErrorCode, message, metadata?)` を投げる。ステータスへの変換は基盤が行う
 - 読み取りだけの RPC は、共有インターフェースのメソッドに `[NoSideEffects]` を付ける。読み取り専用のトランザクションで動き、冪等性の対象から外れる
-- 認証の要らない RPC は `[SkipAuth]` を付ける
+- 認証の要らない RPC は、共有インターフェース(サービス全体)か、そのメソッドに `[SkipAuth]` を付ける
+- 属性は共有インターフェースに付ける。実装クラスや実装クラスのメソッドに付けても効かない(`[SkipAuth]` はクラスに付けるとコンパイルエラーになる)
 - Dapper を使うときは、`tx.Connection` と `tx.Transaction` を渡す
 - ゲームログは、数量の変化を `GameLog.Quantity(kind, delta, after, reason)`、それ以外を `GameLog.Event(kind, reason)` で作り、`Target(id)`・`Field(name, value)` で足す
 

@@ -17,13 +17,23 @@
 
 ## 予約エラー
 
-domain `voltech` のエラー。
+domain `voltech` のエラー。既定の action は、サーバーが `metadata["action"]` で上書きしなかったときに、クライアントが使う動き。
 
-| 区分 | コード |
-| --- | --- |
-| サーバーが返す | `INTERNAL_ERROR`・`DATE_CHANGED` |
-| 定義だけ残し、今は返さない | `MAINTENANCE`・`UPDATE_REQUIRED`・`ACCOUNT_SUSPENDED` |
-| クライアントが作る | `NETWORK_ERROR`・`UNKNOWN_ERROR`・`CLIENT_ERROR`・`ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED` |
+| コード | 区分 | 既定の action |
+| --- | --- | --- |
+| `INTERNAL_ERROR` | サーバーが返す | `RETRY` |
+| `DATE_CHANGED` | サーバーが返す | `TITLE` |
+| `MAINTENANCE` | 定義だけ残し、今は返さない | `TITLE` |
+| `UPDATE_REQUIRED` | 定義だけ残し、今は返さない | `UPDATE` |
+| `ACCOUNT_SUSPENDED` | 定義だけ残し、今は返さない | `TITLE` |
+| `NETWORK_ERROR` | クライアントが作る | `RETRY` |
+| `UNKNOWN_ERROR` | クライアントが作る | `TITLE` |
+| `CLIENT_ERROR` | クライアントが作る | `TITLE` |
+| `ACCOUNT_DATA_CORRUPTED` | クライアントが作る | `STAY` |
+| `ACCOUNT_SAVE_FAILED` | クライアントが作る | `STAY` |
+
+- すべての予約エラーに既定の action を決める。予約エラーを足すときは、この表と、クライアントの既定の action の一覧を一緒に直す
+- アプリの業務エラーは、予約エラーの domain `voltech` を使えない
 
 ## エラーコードの置き場所
 

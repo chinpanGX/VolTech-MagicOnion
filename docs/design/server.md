@@ -21,7 +21,8 @@
 - `IMagicOnionServiceFilter`・`GlobalFilters`・`ServiceContext.Items` は 7.11.0 にある。`ServiceContext.ServiceName`・`MethodName` で RPC の名前も読めるので、Rust 版の `RpcMethodLayer` に当たる部品は要らない
 - 順序は登録順ではなく `Order` で決まる(小さいほど外側。テストで確かめた)。アプリがクラスやメソッドに付けたフィルターが基盤より外側に来ないよう、基盤のフィルターには十分小さい `Order`(`int.MinValue` 近く)を明示する
 - フィルターのインスタンスはメソッドごとに起動時に作られ、リクエストをまたいで使い回される前提で書く。DB 接続など scoped の依存はコンストラクターで受け取らず、`ServiceContext.ServiceProvider` から取る
-- `ServiceContext.MethodInfo` と `AttributeLookup` は実装クラス側の情報なので、共有インターフェースに付けた属性(`[SkipAuth]`・`[NoSideEffects]`)は見えない。起動時にインターフェースマップ(`Type.GetInterfaceMap`)で RPC ごとの設定表を作り、フィルターはそれを引く
+- `ServiceContext.MethodInfo` と `AttributeLookup` は実装クラス側の情報なので、共有インターフェースに付けた属性(`[SkipAuth]`・`[NoSideEffects]`)は見えない。インターフェースマップ(`Type.GetInterfaceMap`)で実装のメソッドから共有インターフェースのメソッドを引き、その属性で RPC ごとの設定(`Internal/RpcSettings`)を作る。メソッドごとに 1 回だけ作ってキャッシュし、フィルターはそれを引く
+- 読むのは共有インターフェースとそのメソッドの属性だけ。実装クラスと実装メソッドの属性は読まない([ヘッダーと RPC ごとの設定](../spec/headers.md#rpc-ごとの設定は属性に置く))。`SkipAuthAttribute` の `AttributeUsage` は `Interface | Method` にして、クラスには付けられないようにする
 - レスポンスヘッダー(`x-server-time`・`x-game-date`)は本文より前に送る必要がある。`ServerTimeFilter` が `next` を呼ぶ前に `CallContext.WriteResponseHeadersAsync` で書く。これで業務エラーのレスポンスにもヘッダーが付く
 - TLS なし(h2c)で動かす環境では、Kestrel の `Protocols` を `Http2` に明示する
 

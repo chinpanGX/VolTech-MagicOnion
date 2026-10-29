@@ -46,9 +46,11 @@ VolTech-MagicOnion/
 
 | ルール | 理由 |
 | --- | --- |
-| DB(Npgsql・DbUp)を参照するのは `Auth/` と `Transaction/` だけ。`Status/`・`Logging/`・`Hosting/`・`Internal/` は参照しない | DB を使うのは端末の登録とトークン(`Auth/`)と、トランザクション・冪等性・ゲームログ・マイグレーション(`Transaction/`)。サーバー時刻と日付変更の判定は DB を使わない([リクエストの処理順](../spec/processing-order.md)) |
+| DB(Npgsql・DbUp)を参照するのは `Auth/` と `Transaction/` だけ。`VolTech.Server` のほかの型(今は `Status/`・`Logging/`・`Hosting/`・`Internal/`。フォルダーを足しても対象に入る)は参照しない | DB を使うのは端末の登録とトークン(`Auth/`)と、トランザクション・冪等性・ゲームログ・マイグレーション(`Transaction/`)。サーバー時刻と日付変更の判定は DB を使わない([リクエストの処理順](../spec/processing-order.md)) |
 | `Internal/` は、ほかのフォルダー(`Auth/`・`Status/`・`Transaction/`・`Logging/`・`Hosting/`)に依存しない | フィルターどうしで共有する部品なので、使う側より下に置く |
 | `Abstractions` は、`VolTech.Server` のコードと、サーバー専用の依存(Npgsql・DbUp・MagicOnion.Server・ASP.NET Core)を参照しない | Unity と共有する(netstandard2.1) |
+
+DB のルールのテストは、名前空間を並べず「`Auth/`・`Transaction/` 以外のすべての型」を対象にする。フォルダーを足したときに、テストに足し忘れても対象から漏れない。ルールが効くことは、`Status/` に Npgsql を参照する型を一時的に足し、テストが失敗するのを見て確かめた(2026-10-30)。
 
 `Hosting/` の `ServiceContextExtensions` は名前空間が `VolTech.Server`(ルート)なので、テストでは `Hosting/` の型として扱う。今のコードでは、`Auth/` は `Transaction/` を経由せず Npgsql を直接使い(`DeviceStore`)、`Auth/`・`Status/` は設定(`Hosting/` の `VoltechServerOptions`)を参照する。
 

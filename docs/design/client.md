@@ -7,7 +7,7 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | `ApiChannel`(YetAnotherHttpHandler + `GrpcChannel`) | 流用 | `MagicOnionClient.Create<T>(callInvoker)` に同じ CallInvoker を渡せる |
 | `ApiCore` の制御(順番待ち、再認証、セッション世代、進行中通知、エラーハンドラー) | 流用 | 通信手段に依存しない |
 | `ErrorConverter`、`ErrorPolicy`、`ReservedErrors`、`ErrorHandling/` | 流用 | サーバーが ErrorInfo を同じ形で返す限り無修正 |
-| `EncryptedFileAccountStore` などアカウント保存 | 流用 | `StoredAccount` は protobuf のまま残す案が最小(未確定) |
+| `EncryptedFileAccountStore` などアカウント保存 | 流用 | `StoredAccount` は暫定で protobuf のまま残す(MessagePack に移すかは[決めること](../index.md#決めること)) |
 | `ApiHeaders`、`AppVersion`、`ServerClock` | 流用 | ヘッダー名が同じ |
 | `ApiCore.InvokeAsync` の `call`(`AsyncUnaryCall<T>`) | 差し替え | `UnaryResult<T>` に変える。`WithOptions(CallOptions)` でヘッダーと締め切りを渡す |
 | `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` | 差し替え | `IMessage` を `IApiResponse` に変える |
@@ -26,10 +26,10 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | --- | --- | --- |
 | `ApiCore`・`ApiCoreBuilder`・`ApiCoreOptions`・`ApiResult` | 同じ名前 | `call` を `Func<TClient, TRequest, UnaryResult<TResponse>>` にした。`ApiCore` が `client.WithOptions(new CallOptions(headers, deadline, cancellationToken))` を作ってから `call` に渡す。`TClient` は `IService<TClient>`。共通レスポンス項目の反映を外した(下) |
 | `ApiServiceBase`(生成ラッパーの基底) | `ApiServiceBase<TService>` | 下の「ラッパーの書き方」 |
-| `ApiServiceBase.RpcSettings`(生成ラッパーが持つ) | `Internal/RpcSettings`(internal) | `TService` の属性から作る。`[SkipAuth]` はインターフェースかメソッド、`[NoSideEffects]` はメソッド。サーバーの `RpcSettings` と同じ読み方。名前は `IGachaService/DrawAsync` の形 |
+| `ApiServiceBase.RpcSettings`(生成ラッパーが持つ) | `Internal/RpcSettings`(internal) | `TService`(共有インターフェース)の属性から作る。`[SkipAuth]` はインターフェースかメソッド、`[NoSideEffects]` はメソッド。サーバーの `RpcSettings` と同じく、共有インターフェースの属性だけを読む([ヘッダーと RPC ごとの設定](../spec/headers.md#rpc-ごとの設定は属性に置く))。名前は `IGachaService/DrawAsync` の形 |
 | `Auth/DeviceTokenProvider` | 同じ名前 | コンストラクターは `CallInvoker` の代わりに `IDeviceService`(アプリが `MagicOnionClient.Create` で作ったもの)を受け取る。`WithOptions` でアプリのバージョンのヘッダーと締め切りを付けて `RegisterAsync(secretKey)`・`IssueTokenAsync(deviceId, secretKey)` を呼ぶ。期限は `IssueTokenResult.ExpiresAt`(UTC の `DateTime`)をそのまま使う |
 | `Auth/` のほか(`AccountData`・`IAccountStore`・`EncryptedFileAccountStore`・例外・`AccountStatus`) | 同じ名前 | なし |
-| `Runtime/Generated/Messages/VolTech/V1/AccountStore.cs`(`StoredAccount`) | `Generated/AccountStore.cs` | なし(protoc が生成したまま。保存形式を変えない) |
+| `Runtime/Generated/Messages/VolTech/V1/AccountStore.cs`(`StoredAccount`) | `Generated/AccountStore.cs` | なし(protoc が生成したまま。保存形式を変えない)。暫定で protobuf のまま残す |
 | `Errors/ErrorCode`・`Errors/ReservedErrors`(errors.toml から生成) | `Abstractions` の `ErrorCode`・`ReservedErrors` | 移さず、サーバーと共有する型を使う。予約エラーの既定の action(VolTech-gRPC 版の `ReservedErrors.All`)は `ErrorPolicyProvider` の中に持つ。`ErrorCode.IsReserved`(internal)は `ErrorConverter.IsReserved` にした |
 | `Errors/` のほか(`ApiError`・`ErrorAction`・`ErrorDefinition`・`ErrorPolicyProvider`・`IErrorPolicyProvider`) | 同じ名前 | `ErrorCode` が `Abstractions` の型になった |
 | `Internal/ApiHeaders` | `Abstractions` の `ApiHeaders` | 移さず、サーバーと共有する定数を使う |
@@ -59,6 +59,7 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 - `InvokeAsync(methodName, request, call, handledCodes = null, notifyActivity = true)`。`methodName` で RPC ごとの設定を引く。`TService` に無い名前なら `ArgumentException`
 - 引数が複数の RPC は、`request` をタプルにして `call` の中で展開する
 - RPC ごとの設定は、コンストラクターで `TService` のメソッドを読んで表にする(リフレクション)。MagicOnion はメソッドのオーバーロードを許さないので、名前で一意に決まる
+- リフレクションにした理由: 読むのはラッパーを作るときの 1 回だけで、呼び出しのたびには読まない。ソースジェネレーターにすると、`Abstractions` の属性を読む生成器を基盤で作って Unity とサーバーの両方に入れることになり、今の規模では手間に見合わない。サーバーも同じ属性をリフレクションで読むので、読み方を揃えやすい。IL2CPP(AOT)でも属性を読めるかは確かめていない([確かめること](../index.md#確かめること))。読めなかったら、ソースジェネレーターか、ラッパーに設定を書く形に変える
 - 対応するのは `UnaryResult<T>` を返すメソッドだけ。レスポンスの無い `UnaryResult` には対応していない
 
 ### 移していないもの
@@ -74,7 +75,8 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 `Tests/EditMode/`(asmdef `VolTech.MagicOnion.Client.Tests.EditMode`)。Sandbox の `manifest.json` の `testables` にパッケージを入れて、Test Runner の EditMode で動かす。
 
 - VolTech-gRPC 版から移した: `DefaultCommonErrorHandlerTests`・`EncryptedFileAccountStoreTests`・`RpcErrorDetailsTests`・`ServerClockTests`・`DeviceTokenProviderTests`(`FakeCallInvoker` の代わりに、`IDeviceService` を実装した偽のクライアントを使う)
-- 足した: `ApiCoreTests`。属性から RPC ごとの設定を読むこと、`authorization`・`x-request-id`・締め切りの付け方、`x-server-time`・`x-game-date` の反映、`UNAUTHENTICATED` での 1 回の再送、エラーの変換と `handledCodes`。偽のクライアントはレスポンスヘッダーを読めるように、`IResponseContext<T>` を包んだ `UnaryResult<T>` を返す
+- 足した: `ApiCoreTests`。属性から RPC ごとの設定を読むこと、`authorization`・`x-request-id`・締め切りの付け方、`x-server-time`・`x-game-date` の反映、`UNAUTHENTICATED` での 1 回の再送(2 回続けて `UNAUTHENTICATED` なら、それ以上送らずにエラーハンドラーに渡す)、セッションのキャンセルトークンを `CallOptions` に渡すこと、エラーハンドラーが Retry を返したら同じ RequestID で送り直すこと、`ResetSession` でトークンとゲーム内の日付を捨てること、エラーの変換と `handledCodes`。偽のクライアントはレスポンスヘッダーを読めるように、`IResponseContext<T>` を包んだ `UnaryResult<T>` を返す
+- 足した: `ErrorPolicyProviderTests`。`ReservedErrors` の公開フィールドをリフレクションですべて列挙し、どれにも既定の action があり、[予約エラーの表](../spec/errors.md#予約エラー)と同じであることを確かめる。予約エラーを足して既定の action を入れ忘れると失敗する
 - 移していない: `ApiTraceTests`(Tracing)
 
 Sandbox(Unity 7000.0.0a12)でコンパイルが通り、EditMode の 38 件がすべて通った(2026-10-30、`unity test VolTech.Sandbox --mode EditMode`)。パッケージのコードに UAL0010 の警告は出なかった(`Generated/AccountStore.cs` を含む)。サーバーを相手にした呼び出し(YetAnotherHttpHandler でエラーのトレーラーが届くか、IL2CPP)はまだ確かめていない
