@@ -2,7 +2,7 @@ namespace VolTech.Server.Abstractions
 {
     /// <summary>
     /// サーバーとクライアントがやり取りするヘッダー(メタデータ)の名前。
-    /// クライアントの VolTech.Client.ApiHeaders と同じ名前にそろえる。両方を一緒に直す。
+    /// この基盤のクライアント(VolTech.MagicOnion.Client)もこの定数を使う。VolTech-gRPC のクライアントの ApiHeaders と同じ名前にそろえる。
     /// </summary>
     public static class ApiHeaders
     {

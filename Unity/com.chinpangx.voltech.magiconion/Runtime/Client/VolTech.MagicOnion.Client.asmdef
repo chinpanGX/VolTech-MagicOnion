@@ -2,7 +2,9 @@
     "name": "VolTech.MagicOnion.Client",
     "rootNamespace": "VolTech.MagicOnion.Client",
     "references": [
-        "VolTech.Server.Abstractions"
+        "VolTech.Server.Abstractions",
+        "UniTask",
+        "Cysharp.Net.Http.YetAnotherHttpHandler"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

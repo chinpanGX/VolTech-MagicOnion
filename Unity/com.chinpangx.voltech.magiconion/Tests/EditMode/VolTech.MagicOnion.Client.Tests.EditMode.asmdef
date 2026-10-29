@@ -1,0 +1,30 @@
+{
+    "name": "VolTech.MagicOnion.Client.Tests.EditMode",
+    "rootNamespace": "VolTech.Client.Tests.EditMode",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "UniTask",
+        "VolTech.Server.Abstractions",
+        "VolTech.MagicOnion.Client"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Google.Protobuf.dll",
+        "Grpc.Core.Api.dll",
+        "MagicOnion.Abstractions.dll",
+        "MessagePack.Annotations.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
