@@ -24,6 +24,7 @@ namespace VolTech.Client.Tests.EditMode
         private FakeTokenProvider tokenProvider;
         private RecordingErrorHandler errorHandler;
         private ServerClock serverClock;
+        private ApiCore core;
         private TestApi api;
 
         /// <summary>
@@ -37,7 +38,7 @@ namespace VolTech.Client.Tests.EditMode
             tokenProvider = new FakeTokenProvider();
             errorHandler = new RecordingErrorHandler();
             serverClock = new ServerClock(() => TimeSpan.Zero);
-            var core = ApiCore.CreateBuilder(
+            core = ApiCore.CreateBuilder(
                     new ApiCoreOptions(),
                     tokenProvider,
                     new ErrorPolicyProvider(new[] { new ErrorDefinition(TestErrors.NotEnough, ErrorAction.Stay) }),
@@ -133,6 +134,84 @@ namespace VolTech.Client.Tests.EditMode
                 service.Calls[1].Options.Headers.GetValue(ApiHeaders.RequestId),
                 Is.EqualTo(service.Calls[0].Options.Headers.GetValue(ApiHeaders.RequestId)));
             Assert.That(errorHandler.Errors, Is.Empty);
+        });
+
+        /// <summary>
+        /// 送り直した後も UNAUTHENTICATED なら、それ以上は送らず、エラーハンドラーに渡して失敗にする。
+        /// </summary>
+        [UnityTest]
+        [Description("送り直した後も UNAUTHENTICATED なら、それ以上は送らずにエラーハンドラーに渡す")]
+        public IEnumerator StopsResendingAfterSecondUnauthenticated() => UniTask.ToCoroutine(async () =>
+        {
+            service.Handler = (method, _) => FakeResponse.Failure<string>(FakeRpcErrors.Status(StatusCode.Unauthenticated));
+
+            var result = await api.WriteAsync("a");
+
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(service.Calls.Count, Is.EqualTo(2));
+            Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1" }));
+            Assert.That(errorHandler.Errors.Count, Is.EqualTo(1));
+        });
+
+        /// <summary>
+        /// CallOptions にはセッションのキャンセルトークンを渡す。ResetSession でセッションを終わらせると、そのトークンがキャンセルされる。
+        /// </summary>
+        [UnityTest]
+        [Description("CallOptions にセッションのキャンセルトークンを渡し、ResetSession でキャンセルする")]
+        public IEnumerator PassesSessionCancellationToken() => UniTask.ToCoroutine(async () =>
+        {
+            await api.ReadAsync(1);
+            var token = service.Calls[0].Options.CancellationToken;
+            Assert.That(token.CanBeCanceled, Is.True);
+            Assert.That(token.IsCancellationRequested, Is.False);
+
+            core.ResetSession();
+            await api.ReadAsync(2);
+
+            Assert.That(token.IsCancellationRequested, Is.True);
+            Assert.That(service.Calls[1].Options.CancellationToken.IsCancellationRequested, Is.False);
+        });
+
+        /// <summary>
+        /// エラーハンドラーが Retry を返したら、同じ RequestID で送り直す。
+        /// </summary>
+        [UnityTest]
+        [Description("エラーハンドラーが Retry を返したら、同じ RequestID で送り直す")]
+        public IEnumerator RetriesWithSameRequestIdWhenErrorHandlerSaysRetry() => UniTask.ToCoroutine(async () =>
+        {
+            service.Handler = (method, _) => service.Calls.Count == 1
+                ? FakeResponse.Failure<string>(FakeRpcErrors.Status(StatusCode.Internal))
+                : FakeResponse.Success("ok");
+            errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
+
+            var result = await api.WriteAsync("a");
+
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(service.Calls.Count, Is.EqualTo(2));
+            Assert.That(
+                service.Calls[1].Options.Headers.GetValue(ApiHeaders.RequestId),
+                Is.EqualTo(service.Calls[0].Options.Headers.GetValue(ApiHeaders.RequestId)));
+            Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.InternalError }));
+        });
+
+        /// <summary>
+        /// ResetSession はトークンとゲーム内の日付を捨てる。次の呼び出しはトークンを取り直し、x-game-date を付けない。
+        /// </summary>
+        [UnityTest]
+        [Description("ResetSession はトークンとゲーム内の日付を捨てる")]
+        public IEnumerator ResetSessionDropsTokenAndGameDate() => UniTask.ToCoroutine(async () =>
+        {
+            service.Handler = (method, _) => FakeResponse.Success("ok", new Metadata { { ApiHeaders.GameDate, "2026-10-30" } });
+            await api.ReadAsync(1);
+            await api.ReadAsync(2);
+
+            core.ResetSession();
+            await api.ReadAsync(3);
+
+            Assert.That(service.Calls[1].Options.Headers.GetValue(ApiHeaders.GameDate), Is.EqualTo("2026-10-30"));
+            Assert.That(service.Calls[1].Options.Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-1"));
+            Assert.That(service.Calls[2].Options.Headers.GetValue(ApiHeaders.GameDate), Is.Null);
+            Assert.That(service.Calls[2].Options.Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-2"));
         });
 
         /// <summary>
@@ -382,15 +461,17 @@ namespace VolTech.Client.Tests.EditMode
             }
         }
 
-        // ダイアログを出さずに、受け取ったエラーを記録して Stay を返す
+        // ダイアログを出さずに、受け取ったエラーを記録して、Decisions に積んだ動きを順に返す。空なら Stay を返す
         private sealed class RecordingErrorHandler : ICommonErrorHandler
         {
             public List<ApiError> Errors { get; } = new();
 
+            public Queue<ErrorDecision> Decisions { get; } = new();
+
             public UniTask<ErrorDecision> HandleAsync(ApiError error)
             {
                 Errors.Add(error);
-                return UniTask.FromResult(ErrorDecision.Stay);
+                return UniTask.FromResult(Decisions.Count > 0 ? Decisions.Dequeue() : ErrorDecision.Stay);
             }
         }
     }

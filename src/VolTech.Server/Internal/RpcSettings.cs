@@ -11,6 +11,7 @@ namespace VolTech.Server.Internal
     /// <remarks>
     /// ServiceContext.MethodInfo と AttributeLookup は実装クラスの情報なので、インターフェースの属性が見えない。
     /// インターフェースマップで実装のメソッドからインターフェースのメソッドを引き、その属性を読む。
+    /// 実装クラスと実装メソッドの属性は読まない。クライアントは共有インターフェースしか知らないので、読むと設定が食い違う。
     /// </remarks>
     internal sealed class RpcSettings
     {
@@ -44,9 +45,8 @@ namespace VolTech.Server.Internal
         {
             var interfaceMethod = FindInterfaceMethod(serviceType, implementation);
             var declaring = interfaceMethod?.DeclaringType;
-            var skipAuth = Has<SkipAuthAttribute>(declaring) || Has<SkipAuthAttribute>(interfaceMethod)
-                || Has<SkipAuthAttribute>(serviceType) || Has<SkipAuthAttribute>(implementation);
-            var noSideEffects = Has<NoSideEffectsAttribute>(interfaceMethod) || Has<NoSideEffectsAttribute>(implementation);
+            var skipAuth = Has<SkipAuthAttribute>(declaring) || Has<SkipAuthAttribute>(interfaceMethod);
+            var noSideEffects = Has<NoSideEffectsAttribute>(interfaceMethod);
             return new RpcSettings(fullName, skipAuth, noSideEffects);
         }
 

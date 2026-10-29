@@ -20,15 +20,17 @@ namespace VolTech.Server.Tests
         // Hosting/ のうち、名前空間が VolTech.Server(ルート)の型
         private const string HostingRootType = "VolTech.Server.ServiceContextExtensions";
 
-        /// <summary>DB(Npgsql・DbUp)を使うのは Auth/(端末の登録とトークン)と Transaction/ だけ。ほかのフォルダーは参照しない。</summary>
-        [Theory]
-        [InlineData(Status)]
-        [InlineData(Logging)]
-        [InlineData(Hosting)]
-        [InlineData(Internal)]
-        public void OnlyAuthAndTransaction_DependOnDatabase(string folder)
+        /// <summary>
+        /// DB(Npgsql・DbUp)を使うのは Auth/(端末の登録とトークン)と Transaction/ だけ。ほかの型は参照しない。
+        /// フォルダーを並べずに「Auth/・Transaction/ 以外のすべて」を対象にし、フォルダーを足したときに漏れないようにする。
+        /// </summary>
+        [Fact]
+        public void OnlyAuthAndTransaction_DependOnDatabase()
         {
-            var types = InFolder(folder);
+            var types = Types.InAssembly(typeof(VoltechServerExtensions).Assembly)
+                .That().DoNotResideInNamespace(Auth)
+                .And().DoNotResideInNamespace(Transaction);
+            Assert.NotEmpty(types.GetTypes());
 
             var result = types.ShouldNot().HaveDependencyOnAny("Npgsql", "DbUp").GetResult();
 

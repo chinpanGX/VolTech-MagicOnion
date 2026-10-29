@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using VolTech.Server.Abstractions;
 using VolTech.Server.Auth;
 using VolTech.Server.Hosting;
 using VolTech.Server.Internal;
@@ -127,6 +128,59 @@ namespace VolTech.Server.Tests
             Assert.False(whoAmI.SkipAuth);
             Assert.False(addGems.NoSideEffects);
             Assert.True(publicMethod.SkipAuth);
+        }
+
+        /// <summary>[SkipAuth] は共有インターフェースのメソッドに付けても効く。</summary>
+        [Fact]
+        public void SkipAuth_OnInterfaceMethod_Applies()
+        {
+            var service = typeof(AttributePlacementService);
+
+            var settings = RpcSettings.Create(
+                service,
+                service.GetMethod(nameof(AttributePlacementService.SkipAuthOnInterfaceMethodAsync))!,
+                "x");
+
+            Assert.True(settings.SkipAuth);
+        }
+
+        /// <summary>実装クラスのメソッドに付けた属性は読まない。クライアントは共有インターフェースの属性しか読めないため。</summary>
+        [Fact]
+        public void AttributesOnImplementationMethod_AreIgnored()
+        {
+            var service = typeof(AttributePlacementService);
+
+            var settings = RpcSettings.Create(
+                service,
+                service.GetMethod(nameof(AttributePlacementService.AttributesOnImplementationAsync))!,
+                "x");
+
+            Assert.False(settings.SkipAuth);
+            Assert.False(settings.NoSideEffects);
+        }
+
+        // MagicOnion のサービスとして登録されないように、IService<T> を継承しない。RpcSettings はインターフェースマップだけを使う
+        private interface IAttributePlacementService
+        {
+            [SkipAuth]
+            Task SkipAuthOnInterfaceMethodAsync();
+
+            Task AttributesOnImplementationAsync();
+        }
+
+        private sealed class AttributePlacementService : IAttributePlacementService
+        {
+            public Task SkipAuthOnInterfaceMethodAsync()
+            {
+                return Task.CompletedTask;
+            }
+
+            [SkipAuth]
+            [NoSideEffects]
+            public Task AttributesOnImplementationAsync()
+            {
+                return Task.CompletedTask;
+            }
         }
     }
 }

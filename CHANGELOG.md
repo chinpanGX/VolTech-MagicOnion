@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### 互換性が壊れる変更
+
+- サーバーの RPC ごとの設定は、共有インターフェースとそのメソッドの属性(`[SkipAuth]`・`[NoSideEffects]`)だけを読む。実装クラスと実装メソッドに付けた属性は読まなくなった。クライアントは実装クラスを知らないので、実装側の属性まで読むと、サーバーとクライアントで認証の要否や冪等性の対象が食い違うため
+- `SkipAuthAttribute` をクラスに付けられなくした(`AttributeUsage` を `Interface | Method` にした)。実装クラスに付けているとコンパイルエラーになる。共有インターフェースに付け直す
+
 ### Changed
 
 - `VolTech.Server.Abstractions` のソースを Unity パッケージの `Runtime/Abstractions/` に移し、csproj から読み込む形にした
