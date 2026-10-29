@@ -52,10 +52,10 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 
 ## 進め方
 
-サーバー側(`VolTech.Server`)は、5 つのフォルダーをすべて実装した(2026-10-27)。テストは `Abstractions` が 24 件、`VolTech.Server` が 40 件(依存の向きのテスト 6 件を含む)で、すべて通る(2026-10-30、`dotnet test`。PostgreSQL のテストは Docker が要る)。残りは次の順に進める。
+サーバー側(`VolTech.Server`)は、5 つのフォルダーをすべて実装した(2026-10-27)。テストは `Abstractions` が 25 件、`VolTech.Server` が 39 件(依存の向きのテスト 3 件を含む)で、すべて通る(2026-10-30、`dotnet test`。PostgreSQL のテストは Docker が要る)。残りは次の順に進める。
 
 1. Windows の IL2CPP のプレイヤーで、gRPC 2.84.0 とソースジェネレーターのクライアント、`Abstractions` の MessagePack の型が動くか確かめる(ビルドは通った)。iOS は Mac が要る
-2. Unity クライアントの `ApiCore` を MagicOnion 版にする([実装設計書のクライアント](design/client.md))。移した(2026-10-30。Sandbox でコンパイルと EditMode のテスト 38 件が通った)。共通レスポンス項目の反映は 3 が決まってから足す。サーバーを相手にした確認(上の YetAnotherHttpHandler のトレーラー、IL2CPP)は残っている
+2. Unity クライアントの `ApiCore` を MagicOnion 版にする([実装設計書のクライアント](design/client.md))。移した(2026-10-30。Sandbox でコンパイルと EditMode のテスト 45 件が通った)。共通レスポンス項目の反映は 3 が決まってから足す。サーバーを相手にした確認(上の YetAnotherHttpHandler のトレーラー、IL2CPP)は残っている
 3. 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組みを足す。先に仕様書と実装設計書に書く。足したら、クライアントの `ApiCore` に反映の処理(VolTech-gRPC 版の `IPlayerDiffApplier` など)を戻す
 4. 依存の向きのテスト(例: `Status` の名前空間は Npgsql を参照しない)を足す。足した(2026-10-30、NetArchTest。ルールは [プロジェクト構成](design/project-structure.md#2-つに分ける理由))
 

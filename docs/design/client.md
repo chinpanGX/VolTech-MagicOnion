@@ -79,4 +79,4 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 - 足した: `ErrorPolicyProviderTests`。`ReservedErrors` の公開フィールドをリフレクションですべて列挙し、どれにも既定の action があり、[予約エラーの表](../spec/errors.md#予約エラー)と同じであることを確かめる。予約エラーを足して既定の action を入れ忘れると失敗する
 - 移していない: `ApiTraceTests`(Tracing)
 
-Sandbox(Unity 7000.0.0a12)でコンパイルが通り、EditMode の 38 件がすべて通った(2026-10-30、`unity test VolTech.Sandbox --mode EditMode`)。パッケージのコードに UAL0010 の警告は出なかった(`Generated/AccountStore.cs` を含む)。サーバーを相手にした呼び出し(YetAnotherHttpHandler でエラーのトレーラーが届くか、IL2CPP)はまだ確かめていない
+Sandbox(Unity 7000.0.0a12)でコンパイルが通り、EditMode の 45 件がすべて通った(2026-10-30、`unity test <Sandbox のパス> --mode EditMode`。`ApiCoreTests` の 4 件と `ErrorPolicyProviderTests` の 3 件を足した後)。パッケージのコードに UAL0010 の警告は出なかった(`Generated/AccountStore.cs` を含む)。サーバーを相手にした呼び出し(YetAnotherHttpHandler でエラーのトレーラーが届くか、IL2CPP)はまだ確かめていない
