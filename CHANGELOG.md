@@ -13,4 +13,6 @@
 - `VolTech.Server.Abstractions`: `ErrorCode`、`BusinessException`、`ApiHeaders`、`ErrorMetadataKeys`、`RequestIdRules`、`SkipAuthAttribute`、`NoSideEffectsAttribute`
 - Unity パッケージ `com.chinpangx.voltech.magiconion` の骨組み(`package.json`、asmdef)と、開発用の Unity 7 プロジェクト `Unity/VolTech.Sandbox`
 - `VolTech.Server.Abstractions`: `ReservedErrors`(予約エラーの定数)、`IDeviceService`(デバイス登録とトークンの発行)
+- Unity クライアント(`Runtime/Client/`): VolTech-gRPC のクライアントから `ApiCore`・`ApiCoreBuilder`・`ApiServiceBase<TService>`・`DeviceTokenProvider`・エラー処理・アカウント保存・`ApiChannel` を MagicOnion 版にして移した。共通レスポンス項目の反映(`IPlayerDiffApplier` など)と Tracing は移していない
+- `tests/VolTech.Server.Tests`: フォルダーの間の依存の向きのテスト(NetArchTest)
 - `VolTech.Server`: `AddVoltechServer()`(フィルターの順序を固定する)、`RpcLogFilter`(アクセスログと例外の変換)、`ServerTimeFilter`・`DateChangeFilter`(サーバー時刻とゲーム内の日付)、`AuthFilter`・`DeviceService`・`IPlayerResolver`(認証)、`ITransactions`・`TxContext`・`GameLog`(トランザクション・冪等性・ゲームログ)、`VoltechDatabase.Migrate()`(基盤のテーブル)

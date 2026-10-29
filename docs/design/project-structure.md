@@ -13,7 +13,8 @@ VolTech-MagicOnion/
 └─ Unity/
     ├─ com.chinpangx.voltech.magiconion/
     │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
-    │   └─ Runtime/Client/             ApiCore など + asmdef
+    │   ├─ Runtime/Client/             ApiCore など + asmdef
+    │   └─ Tests/EditMode/             Runtime/Client のテスト + asmdef
     └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する
 ```
 
@@ -41,7 +42,15 @@ VolTech-MagicOnion/
 - `internal` が使えない。プロジェクトをまたいで型を渡すため、フィルター本体や RPC ごとの設定表まで `public` にするか、`InternalsVisibleTo` を並べることになる。1 つにまとめれば、公開するのは `AddVoltechServer()`・`ITransactions`・`IPlayerResolver`・`AuthContext` の取り出し口などに絞れる
 - 本当に必要な境界は「Unity と共有するか」だけ。`Abstractions` は netstandard2.1 で、サーバー専用の依存(Npgsql など)を持ち込めないので、ここだけは別のプロジェクトにする
 
-関心ごとの分離は、`internal` で公開範囲を絞ることと、依存の向きを確かめるテスト(例: `Status` の名前空間は Npgsql を参照しない)で守る。テストは NetArchTest などで書き、ルールをコードとして残す(依存の向きのテストは未着手)。
+関心ごとの分離は、`internal` で公開範囲を絞ることと、依存の向きを確かめるテストで守る。テストは NetArchTest(NetArchTest.Rules 1.3.2)で書き、ルールをコードとして残す(`tests/VolTech.Server.Tests/ArchitectureTests.cs`)。
+
+| ルール | 理由 |
+| --- | --- |
+| DB(Npgsql・DbUp)を参照するのは `Auth/` と `Transaction/` だけ。`Status/`・`Logging/`・`Hosting/`・`Internal/` は参照しない | DB を使うのは端末の登録とトークン(`Auth/`)と、トランザクション・冪等性・ゲームログ・マイグレーション(`Transaction/`)。サーバー時刻と日付変更の判定は DB を使わない([リクエストの処理順](../spec/processing-order.md)) |
+| `Internal/` は、ほかのフォルダー(`Auth/`・`Status/`・`Transaction/`・`Logging/`・`Hosting/`)に依存しない | フィルターどうしで共有する部品なので、使う側より下に置く |
+| `Abstractions` は、`VolTech.Server` のコードと、サーバー専用の依存(Npgsql・DbUp・MagicOnion.Server・ASP.NET Core)を参照しない | Unity と共有する(netstandard2.1) |
+
+`Hosting/` の `ServiceContextExtensions` は名前空間が `VolTech.Server`(ルート)なので、テストでは `Hosting/` の型として扱う。今のコードでは、`Auth/` は `Transaction/` を経由せず Npgsql を直接使い(`DeviceStore`)、`Auth/`・`Status/` は設定(`Hosting/` の `VoltechServerOptions`)を参照する。
 
 ## 共有のしかた
 

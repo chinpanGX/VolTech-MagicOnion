@@ -42,6 +42,8 @@ client → shared, VolTech の Unity パッケージ
 | YetAnotherHttpHandler | 1.11.7 | UPM |
 | Grpc.Net.Client / Grpc.Core.Api / Grpc.Net.Common | 2.84.0 | NuGetForUnity(MagicOnion.Client の依存。最低の版で入るので、最新を明示して入れる) |
 | NuGetForUnity | 4.5.0 | UPM |
+| UniTask | 2.5.11 | UPM(クライアントの `ApiCore` が使う) |
+| Google.Protobuf | 3.36.2 | NuGetForUnity(エラー詳細の解析とアカウント保存) |
 | Npgsql | 10.0.3 | (サーバーだけ) |
 | dbup-postgresql | 7.0.1 | (サーバーだけ) |
 | Ulid | 1.4.1 | (サーバーだけ) |
