@@ -27,9 +27,9 @@ namespace VolTech.Server.Tests
         [Fact]
         public void OnlyAuthAndTransaction_DependOnDatabase()
         {
+            // DoNotResideInNamespace は前方一致で、VolTech.Server.Authorization なども外してしまうので、正規表現で書く
             var types = Types.InAssembly(typeof(VoltechServerExtensions).Assembly)
-                .That().DoNotResideInNamespace(Auth)
-                .And().DoNotResideInNamespace(Transaction);
+                .That().DoNotResideInNamespaceMatching(@"^VolTech\.Server\.(Auth|Transaction)(\.|$)");
             Assert.NotEmpty(types.GetTypes());
 
             var result = types.ShouldNot().HaveDependencyOnAny("Npgsql", "DbUp").GetResult();

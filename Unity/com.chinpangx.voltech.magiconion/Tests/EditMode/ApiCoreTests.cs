@@ -150,7 +150,8 @@ namespace VolTech.Client.Tests.EditMode
             Assert.That(result.IsSuccess, Is.False);
             Assert.That(service.Calls.Count, Is.EqualTo(2));
             Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1" }));
-            Assert.That(errorHandler.Errors.Count, Is.EqualTo(1));
+            Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.UnknownError }));
+            Assert.That(result.Error.StatusCode, Is.EqualTo(StatusCode.Unauthenticated));
         });
 
         /// <summary>
@@ -188,6 +189,7 @@ namespace VolTech.Client.Tests.EditMode
 
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(service.Calls.Count, Is.EqualTo(2));
+            Assert.That(RequestIdRules.IsValid(service.Calls[0].Options.Headers.GetValue(ApiHeaders.RequestId)), Is.True);
             Assert.That(
                 service.Calls[1].Options.Headers.GetValue(ApiHeaders.RequestId),
                 Is.EqualTo(service.Calls[0].Options.Headers.GetValue(ApiHeaders.RequestId)));

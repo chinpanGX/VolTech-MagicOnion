@@ -10,7 +10,7 @@ namespace VolTech.Server.Internal
     /// </summary>
     /// <remarks>
     /// ServiceContext.MethodInfo と AttributeLookup は実装クラスの情報なので、インターフェースの属性が見えない。
-    /// インターフェースマップで実装のメソッドからインターフェースのメソッドを引き、その属性を読む。
+    /// インターフェースマップで実装のメソッドから共有インターフェース(ServiceBase&lt;T&gt; の T)のメソッドを引き、その属性を読む。
     /// 実装クラスと実装メソッドの属性は読まない。クライアントは共有インターフェースしか知らないので、読むと設定が食い違う。
     /// </remarks>
     internal sealed class RpcSettings
@@ -50,17 +50,36 @@ namespace VolTech.Server.Internal
             return new RpcSettings(fullName, skipAuth, noSideEffects);
         }
 
+        // 共有インターフェースだけを見る。実装クラスのほかのインターフェースに同じシグネチャのメソッドがあっても、その属性は読まない。
+        // 見つからなければ null(属性が無いものとして、認証が要る・冪等性の対象になる)
         private static MethodInfo? FindInterfaceMethod(Type serviceType, MethodInfo implementation)
         {
-            foreach (var serviceInterface in serviceType.GetInterfaces())
+            var serviceInterface = FindServiceInterface(serviceType);
+            if (serviceInterface == null)
             {
-                var map = serviceType.GetInterfaceMap(serviceInterface);
-                for (var i = 0; i < map.TargetMethods.Length; i++)
+                return null;
+            }
+
+            var map = serviceType.GetInterfaceMap(serviceInterface);
+            for (var i = 0; i < map.TargetMethods.Length; i++)
+            {
+                if (map.TargetMethods[i] == implementation)
                 {
-                    if (map.TargetMethods[i] == implementation)
-                    {
-                        return map.InterfaceMethods[i];
-                    }
+                    return map.InterfaceMethods[i];
+                }
+            }
+
+            return null;
+        }
+
+        // MagicOnion がサービスとして登録するのは ServiceBase<T> の T だけ(docs/design/server.md)
+        private static Type? FindServiceInterface(Type serviceType)
+        {
+            for (var type = serviceType; type != null; type = type.BaseType)
+            {
+                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ServiceBase<>))
+                {
+                    return type.GetGenericArguments()[0];
                 }
             }
 

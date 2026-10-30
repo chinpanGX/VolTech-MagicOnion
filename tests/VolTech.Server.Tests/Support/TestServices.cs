@@ -138,4 +138,64 @@ namespace VolTech.Server.Tests.Support
             return (int)(await command.ExecuteScalarAsync(tx.CancellationToken))!;
         }
     }
+
+    /// <summary>
+    /// RpcSettings が属性を読む場所を確かめる、テスト用のサービス。認証が要るので、呼ばずに RpcSettings.Create で使う。
+    /// </summary>
+    public interface IAttributePlacementService : IService<IAttributePlacementService>
+    {
+        [SkipAuth]
+        UnaryResult SkipAuthOnInterfaceMethodAsync();
+
+        UnaryResult AttributesOnImplementationAsync();
+
+        UnaryResult PlainAsync();
+    }
+
+    /// <summary>共有インターフェースではないインターフェース。同じシグネチャのメソッドに属性を付けてある。</summary>
+    public interface IAttributeDecoy
+    {
+        [SkipAuth]
+        [NoSideEffects]
+        UnaryResult PlainAsync();
+    }
+
+    public sealed class AttributePlacementService : ServiceBase<IAttributePlacementService>, IAttributeDecoy, IAttributePlacementService
+    {
+        public UnaryResult SkipAuthOnInterfaceMethodAsync()
+        {
+            return UnaryResult.CompletedResult;
+        }
+
+        [SkipAuth]
+        [NoSideEffects]
+        public UnaryResult AttributesOnImplementationAsync()
+        {
+            return UnaryResult.CompletedResult;
+        }
+
+        public UnaryResult PlainAsync()
+        {
+            return UnaryResult.CompletedResult;
+        }
+    }
+
+    /// <summary>実装を基底クラスに置くサービス。</summary>
+    public interface IDerivedPlacementService : IService<IDerivedPlacementService>
+    {
+        [NoSideEffects]
+        UnaryResult<int> ReadAsync();
+    }
+
+    public abstract class PlacementServiceBase : ServiceBase<IDerivedPlacementService>, IDerivedPlacementService
+    {
+        public UnaryResult<int> ReadAsync()
+        {
+            return UnaryResult.FromResult(0);
+        }
+    }
+
+    public sealed class DerivedPlacementService : PlacementServiceBase
+    {
+    }
 }

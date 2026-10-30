@@ -159,28 +159,28 @@ namespace VolTech.Server.Tests
             Assert.False(settings.NoSideEffects);
         }
 
-        // MagicOnion のサービスとして登録されないように、IService<T> を継承しない。RpcSettings はインターフェースマップだけを使う
-        private interface IAttributePlacementService
+        /// <summary>実装クラスがほかのインターフェースも実装していて、同じシグネチャのメソッドに属性があっても、その属性は読まない。</summary>
+        [Fact]
+        public void AttributesOnOtherInterface_AreIgnored()
         {
-            [SkipAuth]
-            Task SkipAuthOnInterfaceMethodAsync();
+            var service = typeof(AttributePlacementService);
 
-            Task AttributesOnImplementationAsync();
+            var settings = RpcSettings.Create(service, service.GetMethod(nameof(AttributePlacementService.PlainAsync))!, "x");
+
+            Assert.False(settings.SkipAuth);
+            Assert.False(settings.NoSideEffects);
         }
 
-        private sealed class AttributePlacementService : IAttributePlacementService
+        /// <summary>実装を基底クラスに置いても、共有インターフェースの属性を読める。</summary>
+        [Fact]
+        public void ImplementationInBaseClass_ReadsInterfaceAttributes()
         {
-            public Task SkipAuthOnInterfaceMethodAsync()
-            {
-                return Task.CompletedTask;
-            }
+            var service = typeof(DerivedPlacementService);
 
-            [SkipAuth]
-            [NoSideEffects]
-            public Task AttributesOnImplementationAsync()
-            {
-                return Task.CompletedTask;
-            }
+            var settings = RpcSettings.Create(service, service.GetMethod(nameof(DerivedPlacementService.ReadAsync))!, "x");
+
+            Assert.True(settings.NoSideEffects);
         }
+
     }
 }
