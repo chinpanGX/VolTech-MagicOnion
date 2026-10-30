@@ -244,6 +244,12 @@ namespace VolTech.Client
                     return Complete(settings, attempt.Response, attempt.ResponseHeaders, epoch);
                 }
 
+                // 取り直したトークンも弾かれた。残すと、エラーハンドラーの Retry やほかの RPC が同じトークンでまた弾かれる
+                if (attempt.Token != null)
+                {
+                    tokenProvider.Invalidate(attempt.Token);
+                }
+
                 var error = attempt.Error;
                 logger?.Log($"[Api] {settings.MethodName} {error}");
 
@@ -309,9 +315,9 @@ namespace VolTech.Client
             }
             catch (RpcException exception) when (exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth)
             {
-                // 取り直したトークンも弾かれた。残すと、エラーハンドラーの Retry やほかの RPC が同じトークンでまた弾かれる
-                tokenProvider.Invalidate(token);
-                return SendAttempt<TResponse>.Failure(ConvertError(settings, exception));
+                // 弾かれたトークンは、古いセッションの呼び出しでないかを確かめてから呼び出し側(SendWithRetryAsync)が捨てる。
+                // トークンを取る途中で弾かれたときは token が null なので、何も捨てない
+                return SendAttempt<TResponse>.Failure(ConvertError(settings, exception), token);
             }
             catch (Exception exception)
             {
@@ -617,7 +623,7 @@ namespace VolTech.Client
             // Success のときのレスポンスヘッダー
             public Metadata ResponseHeaders { get; }
 
-            // Unauthenticated のときに、サーバーに弾かれたトークン
+            // Unauthenticated と、再認証できずに UNAUTHENTICATED で失敗したときの、サーバーに弾かれたトークン
             public string Token { get; }
 
             // Failure のときのエラー
@@ -633,9 +639,9 @@ namespace VolTech.Client
                 return new SendAttempt<TResponse>(SendOutcome.Unauthenticated, default, null, token, null);
             }
 
-            public static SendAttempt<TResponse> Failure(ApiError error)
+            public static SendAttempt<TResponse> Failure(ApiError error, string rejectedToken = null)
             {
-                return new SendAttempt<TResponse>(SendOutcome.Failure, default, null, null, error);
+                return new SendAttempt<TResponse>(SendOutcome.Failure, default, null, rejectedToken, error);
             }
         }
     }

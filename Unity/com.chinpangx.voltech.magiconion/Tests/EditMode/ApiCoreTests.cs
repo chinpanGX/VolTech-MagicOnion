@@ -195,6 +195,54 @@ namespace VolTech.Client.Tests.EditMode
         });
 
         /// <summary>
+        /// Retry の後にまた UNAUTHENTICATED なら、トークンを取り直して 1 回だけ自動で再送する。
+        /// </summary>
+        [UnityTest]
+        [Description("Retry の後にまた UNAUTHENTICATED なら、1 回だけ自動で再送する")]
+        public IEnumerator ResendsOnceAgainAfterRetry() => UniTask.ToCoroutine(async () =>
+        {
+            service.Handler = (method, _) => service.Calls.Count <= 3
+                ? FakeResponse.Failure<string>(FakeRpcErrors.Status(StatusCode.Unauthenticated))
+                : FakeResponse.Success("ok");
+            errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
+
+            var result = await api.WriteAsync("a");
+
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(service.Calls.Count, Is.EqualTo(4));
+            Assert.That(errorHandler.Errors.Count, Is.EqualTo(1));
+            Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1", "token-2", "token-3" }));
+            Assert.That(service.Calls[3].Options.Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-4"));
+        });
+
+        /// <summary>
+        /// [SkipAuth] の RPC は順番待ちをしない。冪等性の対象の RPC が応答を待っている間にも送れる。
+        /// </summary>
+        [UnityTest]
+        [Description("[SkipAuth] の RPC は、冪等性の対象の RPC の応答を待たずに送れる")]
+        public IEnumerator SkipAuthRpcDoesNotWaitInQueue() => UniTask.ToCoroutine(async () =>
+        {
+            var pendingWrite = new TaskCompletionSource<IResponseContext<string>>();
+            service.Handler = (method, _) => method == nameof(ITestService.WriteAsync)
+                ? new UnaryResult<string>(pendingWrite.Task)
+                : FakeResponse.Success(method + ":ok");
+
+            var write = api.WriteAsync("a");
+            var publicCall = api.PublicAsync("b");
+
+            // 偽のサービスはすぐに応答するので、順番待ちをしていなければ、この時点で終わっている
+            Assert.That(publicCall.Status, Is.EqualTo(UniTaskStatus.Succeeded));
+            Assert.That(write.Status, Is.EqualTo(UniTaskStatus.Pending));
+
+            pendingWrite.SetResult(new FakeResponseContext<string>(Task.FromResult("written"), new Metadata()));
+            var writeResult = await write;
+            var publicResult = await publicCall;
+
+            Assert.That(writeResult.Value, Is.EqualTo("written"));
+            Assert.That(publicResult.Value, Is.EqualTo("PublicAsync:ok"));
+        });
+
+        /// <summary>
         /// [SkipAuth] の RPC が UNAUTHENTICATED を受けたら、トークンを取り直さず、UNKNOWN_ERROR としてエラーハンドラーに渡す。
         /// </summary>
         [UnityTest]

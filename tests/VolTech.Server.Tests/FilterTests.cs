@@ -100,5 +100,17 @@ namespace VolTech.Server.Tests
 
             Assert.Equal(StatusCode.Unauthenticated, exception.StatusCode);
         }
+
+        /// <summary>RPC の実装をサービスの基底クラスに置いても、共有インターフェースの [SkipAuth] が効く(トークン無しで呼べる)。</summary>
+        [Fact]
+        public async Task SkipAuth_OnInterfaceMethod_WorksWhenImplementedInBaseClass()
+        {
+            await using var host = await TestHost.StartAsync();
+            var client = MagicOnionClient.Create<IDerivedPlacementService>(host.Channel);
+
+            var response = await client.PingAsync();
+
+            Assert.Equal("pong", response);
+        }
     }
 }

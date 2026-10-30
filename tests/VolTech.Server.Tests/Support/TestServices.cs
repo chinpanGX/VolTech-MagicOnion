@@ -185,6 +185,10 @@ namespace VolTech.Server.Tests.Support
     {
         [NoSideEffects]
         UnaryResult<int> ReadAsync();
+
+        /// <summary>認証の要らない RPC。TestHost から呼んで、基底クラスに置いた実装でも属性が効くかを見る。</summary>
+        [SkipAuth]
+        UnaryResult<string> PingAsync();
     }
 
     public abstract class PlacementServiceBase : ServiceBase<IDerivedPlacementService>, IDerivedPlacementService
@@ -193,9 +197,35 @@ namespace VolTech.Server.Tests.Support
         {
             return UnaryResult.FromResult(0);
         }
+
+        public UnaryResult<string> PingAsync()
+        {
+            return UnaryResult.FromResult("pong");
+        }
     }
 
     public sealed class DerivedPlacementService : PlacementServiceBase
     {
+    }
+
+    /// <summary>共有インターフェースの基底インターフェース。ここに書いたメソッドには対応しない。</summary>
+    public interface IInheritedMethodBase
+    {
+        [SkipAuth]
+        [NoSideEffects]
+        UnaryResult InheritedAsync();
+    }
+
+    /// <summary>基底インターフェースからメソッドを受け継ぐ共有インターフェース。</summary>
+    public interface IInheritedMethodService : IService<IInheritedMethodService>, IInheritedMethodBase
+    {
+    }
+
+    public sealed class InheritedMethodService : ServiceBase<IInheritedMethodService>, IInheritedMethodService
+    {
+        public UnaryResult InheritedAsync()
+        {
+            return UnaryResult.CompletedResult;
+        }
     }
 }

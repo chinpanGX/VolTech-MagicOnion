@@ -14,7 +14,7 @@ namespace VolTech.Server.Abstractions
 
     /// <summary>
     /// 副作用が無い(読み取り専用の)RPC に付ける。共有インターフェースのメソッドに付ける(実装クラスのメソッドに付けても効かない)。
-    /// 付けていない RPC は冪等性の対象になり、同じ x-request-id の再送で、本体を呼ばずに保存済みのレスポンスを返す。
+    /// [NoSideEffects] も [SkipAuth] も付けていない RPC は冪等性の対象になり、同じ x-request-id の再送で、本体を呼ばずに保存済みのレスポンスを返す。
     /// </summary>
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
     public sealed class NoSideEffectsAttribute : Attribute

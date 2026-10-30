@@ -30,7 +30,7 @@ namespace VolTech.Server.Internal
         /// <summary>認証が要らないか。</summary>
         public bool SkipAuth { get; }
 
-        /// <summary>副作用が無い(読み取り専用の)RPC か。付いていなければ冪等性の対象。</summary>
+        /// <summary>副作用が無い(読み取り専用の)RPC か。これも SkipAuth も付いていなければ冪等性の対象。</summary>
         public bool NoSideEffects { get; }
 
         public static RpcSettings Get(ServiceContext context)

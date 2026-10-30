@@ -182,5 +182,16 @@ namespace VolTech.Server.Tests
             Assert.True(settings.NoSideEffects);
         }
 
+        /// <summary>共有インターフェースが基底インターフェースから受け継いだメソッドには対応しない。その属性は読まない。</summary>
+        [Fact]
+        public void AttributesOnInheritedInterfaceMethod_AreIgnored()
+        {
+            var service = typeof(InheritedMethodService);
+
+            var settings = RpcSettings.Create(service, service.GetMethod(nameof(InheritedMethodService.InheritedAsync))!, "x");
+
+            Assert.False(settings.SkipAuth);
+            Assert.False(settings.NoSideEffects);
+        }
     }
 }
