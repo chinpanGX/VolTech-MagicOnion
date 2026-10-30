@@ -44,7 +44,8 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 
 - 認証が要るか(`[SkipAuth]`)と冪等性の対象か(`[NoSideEffects]`)は、共有インターフェースの属性から基盤が読む。ラッパーには書かない
 - 引数が複数なら、`request` をタプルにする
-- 結果は `ApiResult<T>`。失敗しても例外は投げない。`handledCodes` に入れた業務エラーは、エラーハンドラーを通さずに失敗として返る(予約エラーは入れても共通エラーハンドラーが処理する)
+- 結果は `ApiResult<T>`。失敗しても例外は投げない。`handledCodes` に入れた業務エラーは、共通エラーハンドラーを通さずに失敗として返る(予約エラーは入れても共通エラーハンドラーが処理する。ただし `ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED` は、いつも呼び出し側に返る。[予約エラー](../spec/errors.md#予約エラー))
+- トークンを取り直して再送しても認証が通らなければ、`UNKNOWN_ERROR` として共通エラーハンドラーに渡る。既定ではタイトルに戻る([認証](../spec/auth.md))
 
 ## VolTech-gRPC 版から移すとき
 

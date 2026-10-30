@@ -50,7 +50,9 @@ VolTech-MagicOnion/
 | `Internal/` は、ほかのフォルダー(`Auth/`・`Status/`・`Transaction/`・`Logging/`・`Hosting/`)に依存しない | フィルターどうしで共有する部品なので、使う側より下に置く |
 | `Abstractions` は、`VolTech.Server` のコードと、サーバー専用の依存(Npgsql・DbUp・MagicOnion.Server・ASP.NET Core)を参照しない | Unity と共有する(netstandard2.1) |
 
-DB のルールのテストは、名前空間を並べず「`Auth/`・`Transaction/` 以外のすべての型」を対象にする。フォルダーを足したときに、テストに足し忘れても対象から漏れない。除外は正規表現 `^VolTech\.Server\.(Auth|Transaction)(\.|$)` で書く(NetArchTest の `DoNotResideInNamespace` は前方一致で、`VolTech.Server.Authorization` のような名前空間まで除外してしまうため)。`Auth/`・`Transaction/` の下のフォルダー(`VolTech.Server.Auth.Tokens` など)は除外に含む。ルールが効くことは、Npgsql を参照する型を `Status/` と `VolTech.Server.Authorization`(前方一致なら除外されてしまう名前空間)に一時的に足し、どちらでもテストが失敗するのを見て確かめた(2026-10-30。正規表現に変えた後)。
+DB のルールのテストは、名前空間を並べず「`Auth/`・`Transaction/` 以外のすべての型」を対象にする。フォルダーを足したときに、テストに足し忘れても対象から漏れない。
+
+除外は `DoNotResideInNamespaceMatching` と正規表現 `^VolTech\.Server\.(Auth|Transaction)(\.|$)` で書く。`DoNotResideInNamespace` は前方一致なので、`VolTech.Server.Authorization` のような名前空間まで除外してしまう。`Auth/`・`Transaction/` の下のフォルダー(`VolTech.Server.Auth.Tokens` など)も DB を参照してよい(テストの対象から外す)。ルールが効くことは、Npgsql を参照する型を `Status/` と `VolTech.Server.Authorization`(前方一致なら除外されてしまう名前空間)に一時的に足し、どちらでもテストが失敗するのを見て確かめた(2026-10-30。正規表現に変えた後)。
 
 `Hosting/` の `ServiceContextExtensions` は名前空間が `VolTech.Server`(ルート)なので、テストでは `Hosting/` の型として扱う。今のコードでは、`Auth/` は `Transaction/` を経由せず Npgsql を直接使い(`DeviceStore`)、`Auth/`・`Status/` は設定(`Hosting/` の `VoltechServerOptions`)を参照する。
 

@@ -60,9 +60,28 @@ public async UnaryResult<DrawResult> DrawAsync(int count)
 
 - 業務エラーは `BusinessException(ErrorCode, message, metadata?)` を投げる。ステータスへの変換は基盤が行う
 - 読み取りだけの RPC は、共有インターフェースのメソッドに `[NoSideEffects]` を付ける。読み取り専用のトランザクションで動き、冪等性の対象から外れる
-- 認証の要らない RPC は、共有インターフェース(サービス全体)か、そのメソッドに `[SkipAuth]` を付ける
-- 属性は共有インターフェースに付ける。実装クラスや実装クラスのメソッドに付けても効かない(`[SkipAuth]` はクラスに付けるとコンパイルエラーになる)
+- 認証の要らない RPC には `[SkipAuth]` を付ける。共有インターフェースに付けると、そのサービスのすべての RPC が対象になる。メソッドに付けると、その RPC だけが対象になる。`[SkipAuth]` の RPC は冪等性の対象にもならない
+- 属性は共有インターフェースに付ける。実装クラスのメソッドに付けてもコンパイルは通るが、何も起きない(エラーにもならない。効くのは共有インターフェースに付けた属性だけ)。クラスに付けるとコンパイルエラーになる
 - Dapper を使うときは、`tx.Connection` と `tx.Transaction` を渡す
 - ゲームログは、数量の変化を `GameLog.Quantity(kind, delta, after, reason)`、それ以外を `GameLog.Event(kind, reason)` で作り、`Target(id)`・`Field(name, value)` で足す
+
+共有インターフェースは、`IService<T>` を継承し、Unity と共有するインターフェース。サーバーのサービスのクラスは、`ServiceBase<T>` の `T` にこれを渡す。クライアントのラッパー(`ApiServiceBase<TService>`)にも同じものを渡す。
+
+```csharp
+// 共有コード(サーバーと Unity の両方で読み込む)
+public interface IGachaService : IService<IGachaService>
+{
+    [NoSideEffects]
+    UnaryResult<GachaInfo> GetInfoAsync();
+
+    UnaryResult<DrawResult> DrawAsync(int count);
+}
+
+// サーバー
+public sealed class GachaService : ServiceBase<IGachaService>, IGachaService
+{
+    ...
+}
+```
 
 振る舞いの詳細は [仕様書](../spec/index.md)。

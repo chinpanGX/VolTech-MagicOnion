@@ -10,7 +10,7 @@ Rust 版の `transaction` クレートと同じ振る舞いを C# で再現す�
 
 ## 冪等性
 
-- 冪等性の対象の RPC(`[NoSideEffects]` の付かないもの)は、同じ `x-request-id` の再送で本体を呼ばず、保存済みのレスポンスを返す
+- 冪等性の対象の RPC(`[NoSideEffects]` も `[SkipAuth]` も付かないもの)は、同じ `x-request-id` の再送で本体を呼ばず、保存済みのレスポンスを返す
 - 保存済みのレスポンスは、本体と同じトランザクションで書く。保存先の行が無ければ、基盤が同じトランザクションの中で作る。アプリがプレイヤー作成時に行を作る必要はない
 - `x-request-id` が無い・形が違うときは `INVALID_ARGUMENT`
 - `x-request-id` を別の RPC で使い回したら warn を出し、`INVALID_ARGUMENT` を返す
