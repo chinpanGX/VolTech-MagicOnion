@@ -32,6 +32,7 @@ domain `voltech` のエラー。既定の action は、サーバーが `metadata
 | `ACCOUNT_DATA_CORRUPTED` | クライアントが作る | `STAY` |
 | `ACCOUNT_SAVE_FAILED` | クライアントが作る | `STAY` |
 
+- `ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED` は端末のアカウント情報の読み書きの失敗で、共通エラーハンドラーに回さず、`handledCodes` に関係なくいつも呼び出し側に返す。共通エラーハンドラーを通らないので、基盤がこの action で画面を動かすことはない。呼び出し側に返す `ApiError.Action` には入る
 - すべての予約エラーに既定の action を決める。予約エラーを足すときは、この表と、クライアントの既定の action の一覧を一緒に直す
 - アプリの業務エラーは、予約エラーの domain `voltech` を使えない
 
