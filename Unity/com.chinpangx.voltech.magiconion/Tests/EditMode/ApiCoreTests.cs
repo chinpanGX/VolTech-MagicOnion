@@ -59,10 +59,14 @@ namespace VolTech.Client.Tests.EditMode
             var test = RpcSettings.CreateAll(typeof(ITestService));
 
             Assert.That(device.Values.Select(settings => settings.RequiresAuth), Is.All.False);
+            Assert.That(device.Values.Select(settings => settings.IsIdempotencyTarget), Is.All.False);
             Assert.That(device[nameof(IDeviceService.RegisterAsync)].MethodName, Is.EqualTo("IDeviceService/RegisterAsync"));
             Assert.That(test[nameof(ITestService.ReadAsync)].IsIdempotencyTarget, Is.False);
             Assert.That(test[nameof(ITestService.WriteAsync)].IsIdempotencyTarget, Is.True);
-            Assert.That(test.Values.Select(settings => settings.RequiresAuth), Is.All.True);
+            Assert.That(test[nameof(ITestService.ReadAsync)].RequiresAuth, Is.True);
+            Assert.That(test[nameof(ITestService.WriteAsync)].RequiresAuth, Is.True);
+            Assert.That(test[nameof(ITestService.PublicAsync)].RequiresAuth, Is.False);
+            Assert.That(test[nameof(ITestService.PublicAsync)].IsIdempotencyTarget, Is.False);
         }
 
         /// <summary>
@@ -149,9 +153,62 @@ namespace VolTech.Client.Tests.EditMode
 
             Assert.That(result.IsSuccess, Is.False);
             Assert.That(service.Calls.Count, Is.EqualTo(2));
-            Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1" }));
+            Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1", "token-2" }));
             Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.UnknownError }));
             Assert.That(result.Error.StatusCode, Is.EqualTo(StatusCode.Unauthenticated));
+        });
+
+        /// <summary>
+        /// 2 回続けて UNAUTHENTICATED の後に、エラーハンドラーが Retry を返したら、新しいトークンで同じ RequestID のまま送る。
+        /// </summary>
+        [UnityTest]
+        [Description("2 回続けて UNAUTHENTICATED の後の Retry は、新しいトークンで同じ RequestID のまま送る")]
+        public IEnumerator RetryAfterSecondUnauthenticatedUsesNewToken() => UniTask.ToCoroutine(async () =>
+        {
+            service.Handler = (method, _) => service.Calls.Count <= 2
+                ? FakeResponse.Failure<string>(FakeRpcErrors.Status(StatusCode.Unauthenticated))
+                : FakeResponse.Success("ok");
+            errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
+
+            var result = await api.WriteAsync("a");
+
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(service.Calls.Count, Is.EqualTo(3));
+            Assert.That(service.Calls[2].Options.Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-3"));
+            var requestId = service.Calls[0].Options.Headers.GetValue(ApiHeaders.RequestId);
+            Assert.That(RequestIdRules.IsValid(requestId), Is.True);
+            Assert.That(service.Calls.Select(call => call.Options.Headers.GetValue(ApiHeaders.RequestId)), Is.All.EqualTo(requestId));
+        });
+
+        /// <summary>
+        /// [SkipAuth] の RPC は冪等性の対象にしない。authorization も x-request-id も付けない。
+        /// </summary>
+        [UnityTest]
+        [Description("[SkipAuth] の RPC には authorization も x-request-id も付けない")]
+        public IEnumerator SkipAuthRpcSendsNoTokenOrRequestId() => UniTask.ToCoroutine(async () =>
+        {
+            var result = await api.PublicAsync("a");
+
+            Assert.That(result.Value, Is.EqualTo("PublicAsync:ok"));
+            Assert.That(service.Calls[0].Options.Headers.GetValue(ApiHeaders.Authorization), Is.Null);
+            Assert.That(service.Calls[0].Options.Headers.GetValue(ApiHeaders.RequestId), Is.Null);
+        });
+
+        /// <summary>
+        /// [SkipAuth] の RPC が UNAUTHENTICATED を受けたら、トークンを取り直さず、UNKNOWN_ERROR としてエラーハンドラーに渡す。
+        /// </summary>
+        [UnityTest]
+        [Description("[SkipAuth] の RPC の UNAUTHENTICATED は、取り直さずに UNKNOWN_ERROR としてエラーハンドラーに渡す")]
+        public IEnumerator SkipAuthRpcUnauthenticatedGoesToErrorHandler() => UniTask.ToCoroutine(async () =>
+        {
+            service.Handler = (method, _) => FakeResponse.Failure<string>(FakeRpcErrors.Status(StatusCode.Unauthenticated));
+
+            var result = await api.PublicAsync("a");
+
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(service.Calls.Count, Is.EqualTo(1));
+            Assert.That(tokenProvider.Invalidated, Is.Empty);
+            Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.UnknownError }));
         });
 
         /// <summary>
@@ -315,6 +372,11 @@ namespace VolTech.Client.Tests.EditMode
                 return InvokeAsync(nameof(ITestService.ReadAsync), id, static (client, request) => client.ReadAsync(request));
             }
 
+            public UniTask<ApiResult<string>> PublicAsync(string value)
+            {
+                return InvokeAsync(nameof(ITestService.PublicAsync), value, static (client, request) => client.PublicAsync(request));
+            }
+
             public UniTask<ApiResult<string>> CallUnknown()
             {
                 return InvokeAsync("Unknown", 0, static (client, request) => client.ReadAsync(request));
@@ -350,6 +412,11 @@ namespace VolTech.Client.Tests.EditMode
             public UnaryResult<string> ReadAsync(int id)
             {
                 return Invoke(nameof(ReadAsync), id);
+            }
+
+            public UnaryResult<string> PublicAsync(string value)
+            {
+                return Invoke(nameof(PublicAsync), value);
             }
 
             public ITestService WithOptions(CallOptions option)
@@ -489,5 +556,9 @@ namespace VolTech.Client.Tests.EditMode
         /// <summary>副作用の無い RPC。</summary>
         [NoSideEffects]
         UnaryResult<string> ReadAsync(int id);
+
+        /// <summary>認証の要らない RPC。冪等性の対象にもならない。</summary>
+        [SkipAuth]
+        UnaryResult<string> PublicAsync(string value);
     }
 }

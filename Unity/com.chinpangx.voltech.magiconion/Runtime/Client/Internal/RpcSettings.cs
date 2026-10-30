@@ -9,7 +9,7 @@ namespace VolTech.Client
     /// </summary>
     /// <remarks>
     /// サーバーの RpcSettings(VolTech.Server.Internal)と同じ読み方をする。[SkipAuth] はインターフェースかメソッド、
-    /// [NoSideEffects] はメソッドに付ける。
+    /// [NoSideEffects] はメソッドに付ける。冪等性の対象は、どちらも付かない RPC(docs/spec/headers.md)。
     /// </remarks>
     internal sealed class RpcSettings
     {
@@ -23,7 +23,7 @@ namespace VolTech.Client
         /// <summary>"サービス/メソッド" の形の名前(例: IGachaService/DrawAsync)。ログに出す。</summary>
         internal string MethodName { get; }
 
-        /// <summary>冪等性の対象([NoSideEffects] が付いていない)か。対象なら順番待ちをして、RequestID を付ける。</summary>
+        /// <summary>冪等性の対象([NoSideEffects] も [SkipAuth] も付いていない)か。対象なら順番待ちをして、RequestID を付ける。</summary>
         internal bool IsIdempotencyTarget { get; }
 
         /// <summary>認証が要る([SkipAuth] が付いていない)か。</summary>
@@ -41,7 +41,8 @@ namespace VolTech.Client
                 var skipAuth = skipAuthOnService || method.IsDefined(typeof(SkipAuthAttribute), true);
                 var noSideEffects = method.IsDefined(typeof(NoSideEffectsAttribute), true);
                 // MagicOnion はメソッドのオーバーロードを許さないので、名前で一意に決まる
-                all[method.Name] = new RpcSettings(serviceType.Name + "/" + method.Name, !noSideEffects, !skipAuth);
+                // [SkipAuth] の RPC はプレイヤーが決まらないので、サーバーは冪等性の対象にしない
+                all[method.Name] = new RpcSettings(serviceType.Name + "/" + method.Name, !noSideEffects && !skipAuth, !skipAuth);
             }
 
             return all;

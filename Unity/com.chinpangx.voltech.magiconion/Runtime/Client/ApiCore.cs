@@ -307,6 +307,12 @@ namespace VolTech.Client
             {
                 return SendAttempt<TResponse>.Unauthenticated(token);
             }
+            catch (RpcException exception) when (exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth)
+            {
+                // 取り直したトークンも弾かれた。残すと、エラーハンドラーの Retry やほかの RPC が同じトークンでまた弾かれる
+                tokenProvider.Invalidate(token);
+                return SendAttempt<TResponse>.Failure(ConvertError(settings, exception));
+            }
             catch (Exception exception)
             {
                 return SendAttempt<TResponse>.Failure(ConvertError(settings, exception));
