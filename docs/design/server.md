@@ -25,8 +25,8 @@
 - 読むのは共有インターフェースとそのメソッドの属性だけ。実装クラスと実装クラスのメソッドの属性は読まない([ヘッダーと RPC ごとの設定](../spec/headers.md#rpc-ごとの設定は属性に置く))。`SkipAuthAttribute` の `AttributeUsage` は `Interface | Method` にして、クラスには付けられないようにする
 - 共有インターフェースは、サービスのクラスの基底をたどって見つけた `ServiceBase<T>` の `T` の 1 つだけにし、`GetInterfaceMap(T)` だけを引く。実装クラスのすべてのインターフェースから最初に当たったものを使うと、同じシグネチャのメソッドを持つ別のインターフェースが先に並んだとき、その属性を読んでしまう
 - MagicOnion 7.11.0 は、1 つのクラスが `IService<T>` を 2 つ実装しても `ServiceBase<T>` の `T` だけを登録し、もう一方の RPC は `Unimplemented` になる(2026-10-30、一時的なテストで確かめた。[確かめること](../index.md#確かめること))。そのため、共有インターフェースが 2 つ以上になる場合は考えない
-- サービスのクラスが、RPC の実装を自分の基底クラスに置いた場合も、`ServiceContext.MethodInfo` とインターフェースマップのメソッドは一致し、属性を読める(同じ日に確かめた。`RpcSettingsTests` の `ImplementationInBaseClass_ReadsInterfaceAttributes` でも確かめている)
-- `ServiceBase<T>` が見つからない、またはインターフェースマップにメソッドが無いとき(MagicOnion のサービスなら起きない)は、属性が無いものとして既定の設定(認証が要る・冪等性の対象)にする
+- サービスのクラスが、RPC の実装を自分の基底クラスに置いた場合も、`ServiceContext.MethodInfo` とインターフェースマップのメソッドは一致し、属性を読める(`FilterTests` の `SkipAuth_OnInterfaceMethod_WorksWhenImplementedInBaseClass` で、`TestHost` を通して確かめている)
+- `ServiceBase<T>` が見つからない、またはインターフェースマップにメソッドが無いときは、属性が無いものとして既定の設定(認証が要る・冪等性の対象)にする。インターフェースマップにメソッドが無いのは、共有インターフェースが基底インターフェースから受け継いだメソッドのとき(MagicOnion 7.11.0 はそれも RPC として登録する)。仕様ではこの形に対応しない([ヘッダーと RPC ごとの設定](../spec/headers.md#rpc-ごとの設定は属性に置く))ので、警告も例外も出さない
 - レスポンスヘッダー(`x-server-time`・`x-game-date`)は本文より前に送る必要がある。`ServerTimeFilter` が `next` を呼ぶ前に `CallContext.WriteResponseHeadersAsync` で書く。これで業務エラーのレスポンスにもヘッダーが付く
 - TLS なし(h2c)で動かす環境では、Kestrel の `Protocols` を `Http2` に明示する
 

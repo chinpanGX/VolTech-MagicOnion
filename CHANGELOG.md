@@ -6,9 +6,12 @@
 
 - サーバーの RPC ごとの設定は、共有インターフェースとそのメソッドの属性(`[SkipAuth]`・`[NoSideEffects]`)だけを読む。実装クラスと実装メソッドに付けた属性は読まなくなった。クライアントは実装クラスを知らないので、実装側の属性まで読むと、サーバーとクライアントで認証の要否や冪等性の対象が食い違うため
 - `SkipAuthAttribute` をクラスに付けられなくした(`AttributeUsage` を `Interface | Method` にした)。実装クラスに付けているとコンパイルエラーになる。共有インターフェースに付け直す
+- サーバーが属性を読む共有インターフェースを、サービスのクラスの `ServiceBase<T>` の `T` だけにした。実装クラスがほかに実装しているインターフェースの属性と、共有インターフェースが基底インターフェースから受け継いだメソッドの属性は読まなくなった
+- クライアントで、`[SkipAuth]` の RPC を冪等性の対象から外した。`x-request-id` を付けず、順番待ちもしない(サーバーは前から対象にしていない)
 
 ### Changed
 
+- クライアントの `ApiCore`: 取り直したトークンでも `UNAUTHENTICATED` なら、そのトークンも捨ててから `UNKNOWN_ERROR` にする。共通エラーハンドラーの Retry やほかの RPC が、弾かれたトークンでまた弾かれないようにした
 - `VolTech.Server.Abstractions` のソースを Unity パッケージの `Runtime/Abstractions/` に移し、csproj から読み込む形にした
 - NuGet の版を `Directory.Packages.props` で一か所に固定する
 
