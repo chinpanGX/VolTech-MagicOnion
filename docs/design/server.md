@@ -47,7 +47,7 @@
 - トークンの有効期限は `VoltechServerOptions.AccessTokenLifetime`(既定 1 時間)
 - トークンは 256 ビットの乱数の 16 進(小文字 64 文字)。期限は DB の時刻ではなく `TimeProvider` で比べる(テストで時刻を進められる)
 - secretKey は PBKDF2-SHA256(.NET 標準)でハッシュにして保存する。Rust 版は Argon2 だったが、secretKey はクライアントが作る 16〜128 文字の乱数で、人が覚えるパスワードではないので、遅いハッシュで総当たりに備える必要がない。依存を増やさないほうを選んだ
-- device_id と player_id は ULID(Cysharp の `Ulid`)。DB には player_id を `uuid` で持つ
+- device_id と player_id は ULID(Cysharp の `Ulid`)。DB には player_id を ULID の 26 文字の文字列(`char(26)`)で持つ
 
 ## ゲーム内の日付
 
