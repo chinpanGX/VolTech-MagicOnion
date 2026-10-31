@@ -17,7 +17,7 @@ namespace VolTech.Server.Auth
             await using var command = dataSource.CreateCommand(
                 "INSERT INTO devices (device_id, player_id, secret_hash) VALUES ($1, $2, $3)");
             command.Parameters.AddWithValue(deviceId);
-            command.Parameters.AddWithValue(playerId.ToGuid());
+            command.Parameters.AddWithValue(playerId.ToString());
             command.Parameters.AddWithValue(secretHash);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -36,7 +36,7 @@ namespace VolTech.Server.Auth
                 return null;
             }
 
-            return new DeviceRow(new Ulid(reader.GetGuid(0)), reader.GetString(1));
+            return new DeviceRow(Ulid.Parse(reader.GetString(0)), reader.GetString(1));
         }
 
         public static async Task UpsertTokenAsync(
@@ -71,7 +71,7 @@ namespace VolTech.Server.Auth
                 return null;
             }
 
-            return new TokenRow(reader.GetString(0), new Ulid(reader.GetGuid(1)), reader.GetFieldValue<DateTimeOffset>(2));
+            return new TokenRow(reader.GetString(0), Ulid.Parse(reader.GetString(1)), reader.GetFieldValue<DateTimeOffset>(2));
         }
     }
 

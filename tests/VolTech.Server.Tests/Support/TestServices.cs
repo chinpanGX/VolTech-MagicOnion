@@ -133,7 +133,7 @@ namespace VolTech.Server.Tests.Support
             await using var command = tx.CreateCommand(
                 "INSERT INTO test_gems (player_id, amount) VALUES ($1, $2) "
                 + "ON CONFLICT (player_id) DO UPDATE SET amount = test_gems.amount + excluded.amount RETURNING amount");
-            command.Parameters.AddWithValue(tx.PlayerId!.Value.ToGuid());
+            command.Parameters.AddWithValue(tx.PlayerId!.Value.ToString());
             command.Parameters.AddWithValue(amount);
             return (int)(await command.ExecuteScalarAsync(tx.CancellationToken))!;
         }

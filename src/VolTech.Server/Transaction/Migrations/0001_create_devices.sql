@@ -1,7 +1,7 @@
 -- デバイスと、デバイス登録で発行したプレイヤーの ID。プレイヤー(初期データ)はアプリのサインアップで作る
 CREATE TABLE devices (
     device_id   text PRIMARY KEY,
-    player_id   uuid NOT NULL UNIQUE,
+    player_id   char(26) NOT NULL UNIQUE,
     secret_hash text NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now()
 );

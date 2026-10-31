@@ -22,7 +22,7 @@ namespace VolTech.Server.Tests.Support
 
             await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
             await using var command = dataSource.CreateCommand(
-                "CREATE TABLE test_gems (player_id uuid PRIMARY KEY, amount int NOT NULL)");
+                "CREATE TABLE test_gems (player_id char(26) PRIMARY KEY, amount int NOT NULL)");
             await command.ExecuteNonQueryAsync();
         }
 

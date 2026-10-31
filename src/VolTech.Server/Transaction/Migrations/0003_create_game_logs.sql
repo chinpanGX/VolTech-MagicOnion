@@ -2,7 +2,7 @@
 -- 基盤はアプリの players テーブルを知らないので、外部キーは張らない
 CREATE TABLE game_logs (
     log_id     bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    player_id  uuid NOT NULL,
+    player_id  char(26) NOT NULL,
     request_id text,
     rpc        text NOT NULL,
     kind       text NOT NULL,

@@ -114,10 +114,10 @@ namespace VolTech.Server.Tests
             Assert.Equal(StatusCode.Internal, exception.StatusCode);
         }
 
-        private static async Task<Guid> PlayerIdAsync(TestHost host, string token)
+        private static async Task<string> PlayerIdAsync(TestHost host, string token)
         {
             var whoAmI = await MagicOnionClient.Create<IPlayerTestService>(host.Channel).WithHeaders(AuthTests.Bearer(token)).WhoAmIAsync();
-            return Ulid.Parse(whoAmI.Split(' ')[0]).ToGuid();
+            return Ulid.Parse(whoAmI.Split(' ')[0]).ToString();
         }
     }
 }

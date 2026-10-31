@@ -77,14 +77,14 @@ namespace VolTech.Server.Transaction
             await using (var insert = txContext.CreateCommand(
                 "INSERT INTO last_responses (player_id) VALUES ($1) ON CONFLICT (player_id) DO NOTHING"))
             {
-                insert.Parameters.AddWithValue(playerId.ToGuid());
+                insert.Parameters.AddWithValue(playerId.ToString());
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await using (var select = txContext.CreateCommand(
                 "SELECT request_id, rpc, response FROM last_responses WHERE player_id = $1 FOR UPDATE"))
             {
-                select.Parameters.AddWithValue(playerId.ToGuid());
+                select.Parameters.AddWithValue(playerId.ToString());
                 await using var reader = await select.ExecuteReaderAsync(cancellationToken);
                 await reader.ReadAsync(cancellationToken);
                 var savedRequestId = reader.IsDBNull(0) ? null : reader.GetString(0);
@@ -117,7 +117,7 @@ namespace VolTech.Server.Transaction
                 update.Parameters.AddWithValue(requestId);
                 update.Parameters.AddWithValue(rpc);
                 update.Parameters.AddWithValue(buffer.WrittenSpan.ToArray());
-                update.Parameters.AddWithValue(playerId.ToGuid());
+                update.Parameters.AddWithValue(playerId.ToString());
                 await update.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -133,7 +133,7 @@ namespace VolTech.Server.Transaction
             {
                 await using var command = txContext.CreateCommand(
                     "INSERT INTO game_logs (player_id, request_id, rpc, kind, body) VALUES ($1, $2, $3, $4, $5)");
-                command.Parameters.AddWithValue(txContext.PlayerId!.Value.ToGuid());
+                command.Parameters.AddWithValue(txContext.PlayerId!.Value.ToString());
                 command.Parameters.AddWithValue((object?)requestId ?? DBNull.Value);
                 command.Parameters.AddWithValue(rpc);
                 command.Parameters.AddWithValue(log.Kind);
