@@ -10,6 +10,10 @@
 - クライアントで、`[SkipAuth]` の RPC を冪等性の対象から外した。`x-request-id` を付けず、順番待ちもしない(サーバーは前から対象にしていない)
 - `devices`・`last_responses`・`game_logs` の `player_id` を `uuid` から `char(26)`(ULID の文字列)に変えた。既存のマイグレーションを書き換えたので、手元の DB は作り直す
 
+### Fixed
+
+- Windows の IL2CPP のビルドが `Microsoft.Bcl.AsyncInterfaces` の `IL1009` で失敗する問題を直した。原因は DLL の `.meta` の `Exclude Editor: 1`(古い形式)で、Unity 7 がこの DLL をプレイヤーに渡さなかったこと。`Any` 有効・`Editor` 無効の形式にし、導入ガイドに書いた
+
 ### Changed
 
 - クライアントの `ApiCore`: 取り直したトークンでも `UNAUTHENTICATED` なら、そのトークンも捨ててから `UNKNOWN_ERROR` にする。共通エラーハンドラーの Retry やほかの RPC が、弾かれたトークンでまた弾かれないようにした

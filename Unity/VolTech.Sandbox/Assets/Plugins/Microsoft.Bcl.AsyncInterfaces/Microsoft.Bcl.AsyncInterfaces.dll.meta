@@ -2,7 +2,7 @@ fileFormatVersion: 2
 guid: 6d97d15d7b020c960fe827b5640c1a9f
 PluginImporter:
   externalObjects: {}
-  serializedVersion: 2
+  serializedVersion: 3
   iconMap: {}
   executionOrder: {}
   defineConstraints: []
@@ -13,8 +13,7 @@ PluginImporter:
   platformData:
     Any:
       enabled: 1
-      settings:
-        Exclude Editor: 1
+      settings: {}
     Editor:
       enabled: 0
       settings:
