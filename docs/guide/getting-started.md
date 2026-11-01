@@ -59,7 +59,20 @@ IL2CPP でプレイヤーをビルドすると、UnityLinker が `IL1009: Assemb
 - Unity 7 は `Microsoft.Bcl.AsyncInterfaces` を `Editor/Data/BCLExtensions/runtime/netstandard2.1/` に持っているので、NuGetForUnity は入れさせない(Install が押せない)。Editor ではこれが読み込まれるので動く
 - プレイヤーのビルドでは、リンカーは `BCLExtensions/runtime/net10.0/` だけを探す。そこにはこの DLL が無い
 
-nuget.org の `Microsoft.Bcl.AsyncInterfaces` 10.0.13 から `lib/netstandard2.1/Microsoft.Bcl.AsyncInterfaces.dll` を取り出し、`Assets/Plugins/Microsoft.Bcl.AsyncInterfaces/` に置く。Inspector で Editor を外し、プレイヤーのビルドにだけ含める(Editor の持つ DLL と重ねないため)。見本は Sandbox の同じ場所にある。Unity が net10.0 側にこの DLL を足したら要らなくなる。
+nuget.org の `Microsoft.Bcl.AsyncInterfaces` 10.0.13 から `lib/netstandard2.1/Microsoft.Bcl.AsyncInterfaces.dll` を取り出し、`Assets/Plugins/Microsoft.Bcl.AsyncInterfaces/` に置く。Inspector の Select platforms for plugin で **Any Platform を有効にし、Editor のチェックだけを外す**(Editor の持つ DLL と重ねないため)。見本は Sandbox の同じ場所にある。Unity が net10.0 側にこの DLL を足したら要らなくなる。
+
+**`.meta` を手で書くときの注意**: `platformData` の `Any` の `settings` に `Exclude Editor: 1` と書く古い形式にしない。Unity 7(7000.0.0a12)は、この形式だとこの DLL をプレイヤーのコンパイルにもリンカーにも渡さず、置いても `IL1009` のままになる(2026-11-01 に確かめた)。次の形にする(NuGetForUnity が作る DLL の `.meta` と同じ)。
+
+```yaml
+  platformData:
+    Any:
+      enabled: 1
+      settings: {}
+    Editor:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+```
 
 ### 版の固定
 
