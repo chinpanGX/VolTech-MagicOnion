@@ -17,11 +17,17 @@ namespace VolTech.Server.Transaction
     {
         private readonly NpgsqlDataSource dataSource;
         private readonly ILogger<Transactions> logger;
+        private readonly CommonResponseRegistration? commonResponse;
 
-        public Transactions(NpgsqlDataSource dataSource, ILogger<Transactions> logger)
+        public Transactions(
+            NpgsqlDataSource dataSource,
+            ILogger<Transactions> logger,
+            IEnumerable<CommonResponseRegistration> commonResponses)
         {
             this.dataSource = dataSource;
             this.logger = logger;
+            // AddCommonResponse は 2 回呼べないので、多くても 1 つ
+            commonResponse = commonResponses.SingleOrDefault();
         }
 
         public async Task<TResponse> RunAsync<TResponse>(ServiceContext context, Func<TxContext, Task<TResponse>> handler)
@@ -38,17 +44,21 @@ namespace VolTech.Server.Transaction
             {
                 // 誤って書き込むと DB がその場でエラーを返すので、宣言の間違いに開発中に気づける
                 await ExecuteAsync(connection, transaction, "SET TRANSACTION READ ONLY", cancellationToken);
-                var readOnlyContext = new TxContext(connection, transaction, playerId, isReadOnly: true, cancellationToken);
+                var readOnlyContext = new TxContext(
+                    connection, transaction, playerId, isReadOnly: true, cancellationToken, commonResponse, context.ServiceProvider);
                 var response = await handler(readOnlyContext);
+                await FillCommonResponseAsync(readOnlyContext, response);
                 await transaction.CommitAsync(cancellationToken);
                 return response;
             }
 
-            var txContext = new TxContext(connection, transaction, playerId, isReadOnly: false, cancellationToken);
+            var txContext = new TxContext(
+                connection, transaction, playerId, isReadOnly: false, cancellationToken, commonResponse, context.ServiceProvider);
             // [SkipAuth] の RPC はプレイヤーが決まらないので、冪等性の対象にしない
             if (playerId == null)
             {
                 var response = await handler(txContext);
+                await FillCommonResponseAsync(txContext, response);
                 await CommitAsync(txContext, settings.FullName, requestId);
                 return response;
             }
@@ -108,6 +118,8 @@ namespace VolTech.Server.Transaction
 
             SetReplayed(context, false);
             var response = await handler(txContext);
+            // 再送で同じ共通レスポンス項目を返せるように、保存する前に詰める
+            await FillCommonResponseAsync(txContext, response);
 
             var buffer = new ArrayBufferWriter<byte>();
             context.MessageSerializer.Serialize(buffer, response);
@@ -123,6 +135,17 @@ namespace VolTech.Server.Transaction
 
             await CommitAsync(txContext, rpc, requestId);
             return response;
+        }
+
+        /// <summary>本体が成功した後、同じトランザクションの中で、レスポンスに共通レスポンス項目を詰める。</summary>
+        private async Task FillCommonResponseAsync<TResponse>(TxContext txContext, TResponse response)
+        {
+            if (response != null && commonResponse != null && await commonResponse.FillAsync(response, txContext))
+            {
+                return;
+            }
+
+            CommonResponseRegistration.ThrowIfUnfilled(response, commonResponse);
         }
 
         /// <summary>ゲームログを同じトランザクションで書いてから、コミットする。</summary>

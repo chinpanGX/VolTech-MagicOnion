@@ -36,7 +36,10 @@ namespace VolTech.Server.Tests.Support
         /// <summary>
         /// サーバーを起動する。connectionString を渡さなければ、DB につながらない(つなごうとすると失敗する)。
         /// </summary>
-        public static async Task<TestHost> StartAsync(string? connectionString = null, DateTimeOffset? now = null)
+        public static async Task<TestHost> StartAsync(
+            string? connectionString = null,
+            DateTimeOffset? now = null,
+            bool commonResponse = true)
         {
             var time = new FakeTimeProvider(now ?? new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
             var players = new FakePlayerResolver();
@@ -47,11 +50,15 @@ namespace VolTech.Server.Tests.Support
             builder.Services.AddSingleton<TimeProvider>(time);
             builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString ?? "Host=127.0.0.1;Port=1;Timeout=1"));
             builder.Services.AddSingleton<IPlayerResolver>(players);
-            builder.Services.AddVoltechServer(options =>
+            var magicOnion = builder.Services.AddVoltechServer(options =>
             {
                 options.GameDay.ResetHour = 4;
                 options.GameDay.TimeZone = "Asia/Tokyo";
             });
+            if (commonResponse)
+            {
+                magicOnion.AddCommonResponse<TestCommon, TestCollector>();
+            }
 
             var app = builder.Build();
             app.MapMagicOnionService();

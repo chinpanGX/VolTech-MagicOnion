@@ -64,5 +64,28 @@ namespace VolTech.Server.Hosting
                 magicOnion.GlobalFilters.Add(new MagicOnionServiceFilterDescriptor(typeof(DateChangeFilter), FilterOrder.DateChange));
             });
         }
+
+        /// <summary>
+        /// 共通レスポンス項目(player_diff・バッジ・通知)の型と、それを集めるコレクターを登録する。<see cref="AddVoltechServer"/> の後に呼ぶ。
+        /// </summary>
+        /// <remarks>
+        /// コレクターは DI に登録せず、トランザクションごとにリクエストの ServiceProvider から作る(コンストラクターで DI の部品を受け取れる)。
+        /// ITransactions.RunAsync は、本体が返したレスポンスが IApiResponse&lt;TCommon&gt; なら、コレクターから作った Common を入れる。
+        /// </remarks>
+        /// <typeparam name="TCommon">アプリの共通レスポンス項目の型。</typeparam>
+        /// <typeparam name="TCollector">TCommon を集めるコレクター。</typeparam>
+        /// <exception cref="InvalidOperationException">2 回呼んだとき(TCommon はアプリに 1 つだけ)。</exception>
+        public static IMagicOnionServerBuilder AddCommonResponse<TCommon, TCollector>(this IMagicOnionServerBuilder builder)
+            where TCommon : class
+            where TCollector : class, ICommonResponseCollector<TCommon>
+        {
+            if (builder.Services.Any(d => d.ServiceType == typeof(CommonResponseRegistration)))
+            {
+                throw new InvalidOperationException("AddCommonResponse は 1 回だけ呼べる。共通レスポンス項目の型はアプリに 1 つだけにする。");
+            }
+
+            builder.Services.AddSingleton<CommonResponseRegistration>(new CommonResponseRegistration<TCommon, TCollector>());
+            return builder;
+        }
     }
 }

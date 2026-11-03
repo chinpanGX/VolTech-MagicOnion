@@ -12,14 +12,21 @@ namespace VolTech.Server.Transaction
     public sealed class TxContext
     {
         private readonly List<GameLog> gameLogs = new();
+        private readonly CommonResponseRegistration? commonResponse;
+        private readonly IServiceProvider? services;
+        private object? collector;
 
         internal TxContext(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             Ulid? playerId,
             bool isReadOnly,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            CommonResponseRegistration? commonResponse = null,
+            IServiceProvider? services = null)
         {
+            this.commonResponse = commonResponse;
+            this.services = services;
             Connection = connection;
             Transaction = transaction;
             PlayerId = playerId;
@@ -50,6 +57,28 @@ namespace VolTech.Server.Transaction
         public NpgsqlCommand CreateCommand(string sql)
         {
             return new NpgsqlCommand(sql, Connection, Transaction);
+        }
+
+        /// <summary>
+        /// このトランザクションの、共通レスポンス項目のコレクターを返す。初めて呼んだときに作る。
+        /// </summary>
+        /// <typeparam name="TCollector">AddCommonResponse で登録したコレクターの型。</typeparam>
+        /// <exception cref="InvalidOperationException">コレクターを登録していないか、TCollector が登録した型と違うとき。</exception>
+        public TCollector GetCollector<TCollector>() where TCollector : class
+        {
+            if (commonResponse == null || services == null)
+            {
+                throw new InvalidOperationException("共通レスポンス項目のコレクターを AddCommonResponse で登録していない。");
+            }
+
+            if (typeof(TCollector) != commonResponse.CollectorType)
+            {
+                throw new InvalidOperationException(
+                    $"{typeof(TCollector).Name} は登録したコレクター({commonResponse.CollectorType.Name})と違う。");
+            }
+
+            collector ??= commonResponse.CreateCollector(services);
+            return (TCollector)collector;
         }
 
         /// <summary>
