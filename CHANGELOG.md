@@ -22,6 +22,10 @@
 
 ### Added
 
+- 共通レスポンス項目(player_diff・バッジ・通知): レスポンスの型が `IApiResponse<TCommon>`(`Abstractions`)を実装し、`Common` に載せて返す。`TCommon` はアプリが決める 1 つの型
+- `VolTech.Server`: `ICommonResponseCollector<TCommon>`・`TxContext.GetCollector<TCollector>()`・`AddCommonResponse<TCommon, TCollector>()`。`ITransactions.RunAsync` が本体の成功後、保存の前に `Common` を詰める
+- Unity クライアント: `IPlayerDiffApplier<TCommon>`・`IBadgeApplier<TCommon>`・`INotificationApplier<TCommon>` と `ApiCoreBuilder.WithPlayerDiffApplier`・`WithBadgeApplier`・`WithNotificationApplier`。成功したレスポンスの `Common` を player_diff → バッジ → 通知の順に渡し、反映の例外は `CLIENT_ERROR` にする
+
 - リポジトリの骨組み(ソリューション、CI、`.editorconfig`)
 - `VolTech.Server.Abstractions`: `ErrorCode`、`BusinessException`、`ApiHeaders`、`ErrorMetadataKeys`、`RequestIdRules`、`SkipAuthAttribute`、`NoSideEffectsAttribute`
 - Unity パッケージ `com.chinpangx.voltech.magiconion` の骨組み(`package.json`、asmdef)と、開発用の Unity 7 プロジェクト `Unity/VolTech.Sandbox`

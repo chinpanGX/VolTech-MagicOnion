@@ -17,10 +17,10 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 | `VolTech.Server.Abstractions` | `ErrorCode`、`ReservedErrors`、`BusinessException`、ヘッダー名、属性、`IDeviceService`。Unity と共有(netstandard2.1)。ソースは Unity パッケージの `Runtime/Abstractions/` | あり |
 | `VolTech.Server` の `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定 | あり |
 | `VolTech.Server` の `Auth/` | `DeviceService`、トークン、`AuthFilter` | あり |
-| `VolTech.Server` の `Transaction/` | `ITransactions`、冪等性、ゲームログ、マイグレーション | あり。共通レスポンス項目(`IApiResponse` とコレクター)は未着手 |
+| `VolTech.Server` の `Transaction/` | `ITransactions`、冪等性、ゲームログ、マイグレーション | あり。共通レスポンス項目(`ICommonResponseCollector<TCommon>`・`AddCommonResponse`)もあり(2026-11-03) |
 | `VolTech.Server` の `Logging/` | `RpcLogFilter`(アクセスログと例外の変換) | あり。出力形式(ZLogger)はアプリに任せている |
 | `VolTech.Server` の `Hosting/` | `AddVoltechServer()`。フィルターの順序を固定する | あり |
-| Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | `Runtime/Client/` に `ApiCore`・`DeviceTokenProvider`・エラー処理・アカウント保存を移した(2026-10-30)。共通レスポンス項目の反映、Tracing、`Runtime/Unity/` の部品(`ApiChannel` 以外)は移していない([実装設計書のクライアント](design/client.md#移していないもの)) |
+| Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | `Runtime/Client/` に `ApiCore`・`DeviceTokenProvider`・エラー処理・アカウント保存を移した(2026-10-30)。共通レスポンス項目の反映(`WithPlayerDiffApplier` など)を足した(2026-11-03)。Tracing、`Runtime/Unity/` の部品(`ApiChannel` 以外)は移していない([実装設計書のクライアント](design/client.md#移していないもの)) |
 | `Unity/VolTech.Sandbox` | 開発用の Unity 7 プロジェクト。パッケージを `file:` で参照する | あり |
 
 ## 確かめること
@@ -53,11 +53,11 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 
 ## 進め方
 
-サーバー側(`VolTech.Server`)は、5 つのフォルダーをすべて実装した(2026-10-27)。テストは `Abstractions` が 25 件、`VolTech.Server` が 43 件(依存の向きのテスト 3 件を含む)で、すべて通る(2026-10-30、`dotnet test`。PostgreSQL のテストは Docker が要る)。残りは次の順に進める。
+サーバー側(`VolTech.Server`)は、5 つのフォルダーをすべて実装した(2026-10-27)。テストは `Abstractions` が 25 件、`VolTech.Server` が 51 件(依存の向きのテスト 3 件、共通レスポンス項目の 8 件を含む)で、すべて通る(2026-11-03、`dotnet vstest`。PostgreSQL のテストは Docker が要る)。残りは次の順に進める。
 
 1. Windows の IL2CPP のプレイヤーで、gRPC 2.84.0 とソースジェネレーターのクライアント、`Abstractions` の MessagePack の型が動くか確かめる(ビルドは通った)。iOS は Mac が要る
-2. Unity クライアントの `ApiCore` を MagicOnion 版にする([実装設計書のクライアント](design/client.md))。移した(2026-10-30。Sandbox でコンパイルと EditMode のテスト 50 件が通った)。共通レスポンス項目の反映は 3 が決まってから足す。サーバーを相手にした確認(上の YetAnotherHttpHandler のトレーラー、IL2CPP)は残っている
-3. 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組みを足す。先に仕様書と実装設計書に書く。足したら、クライアントの `ApiCore` に反映の処理(VolTech-gRPC 版の `IPlayerDiffApplier` など)を戻す
+2. Unity クライアントの `ApiCore` を MagicOnion 版にする([実装設計書のクライアント](design/client.md))。移した(2026-10-30。Sandbox でコンパイルと EditMode のテスト 50 件が通った)。共通レスポンス項目の反映は 3 で足した。サーバーを相手にした確認(上の YetAnotherHttpHandler のトレーラー、IL2CPP)は残っている
+3. 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組みを足す。足した(2026-11-03。サーバーは `AddCommonResponse`・`TxContext.GetCollector`、クライアントは `IPlayerDiffApplier<TCommon>` など。[共通レスポンス項目](spec/common-response.md))
 4. 依存の向きのテスト(例: `Auth/`・`Transaction/` 以外は Npgsql を参照しない)を足す。足した(2026-10-30、NetArchTest。ルールは [プロジェクト構成](design/project-structure.md#2-つに分ける理由))
 
 確認に使ったクライアントは Sandbox の `Assets/Smoke/` にある。`ISmokeService.cs`(`Assets/Smoke/Shared/`)はサーバーとクライアントの両方で読み込む前提で、相手のサーバーはまだリポジトリに入れていない(一時的に作って確かめた)。
