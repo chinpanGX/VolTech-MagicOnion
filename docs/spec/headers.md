@@ -35,4 +35,4 @@ RPC は、共有インターフェースに直接書いたメソッドだけに�
 
 ## 共通レスポンス項目
 
-`player_diff`・バッジ・通知は、`IApiResponse` を実装した MessagePack の型で返す。
+`player_diff`・バッジ・通知は、レスポンスの型が `IApiResponse<TCommon>` を実装し、`Common` に載せて返す。ヘッダーやトレーラーでは運ばない。詳細は [共通レスポンス項目](common-response.md)。

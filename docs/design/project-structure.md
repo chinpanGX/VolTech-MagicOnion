@@ -22,7 +22,7 @@ VolTech-MagicOnion/
 
 | プロジェクト | 中身 | Unity と共有 |
 | --- | --- | --- |
-| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数(`ReservedErrors`)、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IDeviceService` と結果の型、`IApiResponse`(未実装) | する(netstandard2.1) |
+| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数(`ReservedErrors`)、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IDeviceService` と結果の型、`IApiResponse<TCommon>` | する(netstandard2.1) |
 | `VolTech.Server` | 下の表のフォルダーすべて | しない(net10) |
 
 | `VolTech.Server` のフォルダー | 中身 |

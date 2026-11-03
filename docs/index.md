@@ -44,7 +44,7 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 
 - [x] DB の最終決定。PostgreSQL + Npgsql、マイグレーションは DbUp。基盤は Dapper に依存しない(アプリが使うのは自由)(2026-10-27)
 - [x] ゲーム内の日付の設定形式。`VoltechServerOptions.GameDay`(`ResetHour`・`TimeZone`)を ASP.NET Core の設定から入れる(2026-10-27)
-- [ ] 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組み(Rust 版のコレクター)
+- [x] 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組み(Rust 版のコレクター)。アプリが 1 つの型 `TCommon` にまとめ、レスポンスの型が `IApiResponse<TCommon>` を実装する(戻り値の型は変えない)。サーバーは `ICommonResponseCollector<TCommon>` をトランザクションごとに作り、`RunAsync` が本体の後に詰める。クライアントの反映処理は VolTech-gRPC 版と同じ名前の 3 つで、どれにも `TCommon` を渡す(2026-11-03。[共通レスポンス項目](spec/common-response.md))
 - [ ] ログの出力形式。基盤は `ILogger` のスコープとアクセスログを出すだけで、JSON での出力(ZLogger)はアプリに任せている。基盤で決めるか
 - [ ] `StoredAccount` のシリアライズ: protobuf のまま残すか、MessagePack に移すか(移すと保存形式が変わる)。今は VolTech-gRPC 版のまま変えていない
 - [ ] Tracing(gRPC Monitor)を MessagePack で作り直すか、リリース外のツールとして割り切るか

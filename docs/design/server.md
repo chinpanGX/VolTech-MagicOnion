@@ -60,6 +60,23 @@
 - 行が無ければ、`RunAsync` が同じトランザクションの中で作ってからロックする(`INSERT ... ON CONFLICT DO NOTHING` → `SELECT ... FOR UPDATE`)。Rust 版(MySQL)は隙間のロックによるデッドロックを避けるため別のトランザクションで作っていたが、PostgreSQL は隙間のロックを取らないので要らない
 - `[NoSideEffects]` の RPC は `SET TRANSACTION READ ONLY` で動かす
 
+## 共通レスポンス項目
+
+[共通レスポンス項目](../spec/common-response.md) を、次の型で作る。VolTech-gRPC 版(Rust)のコレクター(`DiffCollector`・`BadgeCollector`・`NotificationCollector`)はアプリに置いていたので、基盤には 3 つをまとめた 1 つのコレクターの口だけを置く。
+
+| 型 | 置き場所 | 役目 |
+| --- | --- | --- |
+| `IApiResponse<TCommon>`(`TCommon Common { get; set; }`) | `Abstractions` | レスポンスの型が実装する。`TCommon` は class |
+| `ICommonResponseCollector<TCommon>`(`ValueTask<TCommon?> BuildAsync(TxContext tx)`) | `Transaction/` | アプリが実装する。記録した中身から `TCommon` を作る。変化が無ければ null を返してよい |
+| `TxContext.GetCollector<TCollector>()` | `Transaction/` | このトランザクションのコレクターを返す。初めて呼んだときに作る |
+| `AddCommonResponse<TCommon, TCollector>()`(`IMagicOnionServerBuilder` の拡張) | `Hosting/` | `AddVoltechServer()` の戻り値に続けて呼ぶ。2 回呼ぶと `InvalidOperationException` |
+
+- コレクターは `ActivatorUtilities.CreateInstance` で、リクエストの `ServiceProvider` から作る(コンストラクターで DI の部品を受け取れる)。DI にコレクターそのものは登録しない。トランザクションごとに新しく作り、ロールバックしたら `TxContext` ごと捨てる
+- `GetCollector<T>()` は、登録していないとき、または `T` が登録した `TCollector` と違うときに `InvalidOperationException`
+- `RunAsync` は本体が返した直後、同じトランザクションの中でレスポンスを詰める。レスポンスが `IApiResponse<TCommon>` なら、コレクター(まだ作っていなければここで作る)の `BuildAsync` を呼び、`Common` に入れる。冪等性の対象では、そのあとで `last_responses` に保存する。順は「本体 → 詰める → 保存 → ゲームログ → コミット」
+- 詰められなかったのに、レスポンスの型が何かの `IApiResponse<>` を実装しているとき(登録忘れ・`TCommon` の食い違い)は `InvalidOperationException` を投げる。`RpcLogFilter` が `INTERNAL` にする。型ごとの判定はキャッシュする
+- `[NoSideEffects]` の RPC では、`BuildAsync` も読み取り専用のトランザクションの中で動く(バッジの計算で読むだけ)
+
 ## ゲームログ
 
 - 形は Rust 版と同じ。数量の変化は `GameLog.Quantity(kind, delta, after, reason)`、それ以外は `GameLog.Event(kind, reason)` で作り、`Target(id)` と `Field(name, value)` を足す。種別で変わる値は `body`(jsonb)にまとめる

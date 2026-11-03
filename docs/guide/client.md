@@ -1,6 +1,6 @@
 # Unity クライアントでの使い方
 
-Unity のパッケージ `com.chinpangx.voltech.magiconion` の `ApiCore` で、サーバーの RPC を呼ぶ。共通レスポンス項目(player_diff・バッジ・通知)の反映はまだ無い(決まっていない)。作り方の詳細は [実装設計書のクライアント](../design/client.md)。
+Unity のパッケージ `com.chinpangx.voltech.magiconion` の `ApiCore` で、サーバーの RPC を呼ぶ。作り方の詳細は [実装設計書のクライアント](../design/client.md)。
 
 ## 組み立て
 
@@ -17,6 +17,9 @@ var core = ApiCore.CreateBuilder(options, tokenProvider, new ErrorPolicyProvider
     .WithErrorNavigator(navigator)
     .WithLogger(logger)
     .AddActivityHandler(loadingIndicator)
+    .WithPlayerDiffApplier(new AppPlayerDiffApplier(repository))      // IPlayerDiffApplier<AppCommon>
+    .WithBadgeApplier(new AppBadgeApplier(badgeStore))                // IBadgeApplier<AppCommon>
+    .WithNotificationApplier(new AppNotificationApplier(queue))       // INotificationApplier<AppCommon>
     .Build();
 
 var gacha = new GachaApi(core, MagicOnionClient.Create<IGachaService>(callInvoker, serializerProvider, filters, clientFactoryProvider));
@@ -25,6 +28,16 @@ var gacha = new GachaApi(core, MagicOnionClient.Create<IGachaService>(callInvoke
 - `ApiCore` はアプリで 1 つにする(順番待ちとセッションを持つため)
 - `IDeviceService` のクライアントも、アプリの `[MagicOnionClientGeneration]` の対象に入れる
 - `appErrors` は、アプリの業務エラー(`ErrorCode`)と既定の action を組にした `ErrorDefinition` の一覧。予約エラー(`ReservedErrors`)は基盤が入れる
+
+## 共通レスポンス項目の反映
+
+成功したレスポンスが `IApiResponse<AppCommon>`(`AppCommon` は [サーバーでの使い方](server.md#共通レスポンス項目) の型)で `Common` が null でなければ、`ApiCore` が呼び出し側に返す前に、player_diff → バッジ → 通知の順に反映処理へ `Common` を渡す。
+
+- 反映処理はどれも省略できる。渡した反映処理の型引数(`AppCommon`)が食い違うと、`Build` で `InvalidOperationException`
+- 反映処理でやるのはデータの更新だけにする。ダイアログや画面遷移は書かない(通知を出すタイミングは画面が決める)
+- 反映処理で例外が起きたら、残りは呼ばれず、`CLIENT_ERROR` として共通エラーハンドラーに渡り、呼び出し側には失敗が返る。送り直しはしない
+- 変化前の値が要る演出は、呼ぶ前に値を取っておく(返った時点で反映が終わっている)
+- サインインなど全件を返すレスポンスの置き換えは、呼び出し側が `await` で受け取った後に書く
 
 ## ラッパー
 
@@ -53,4 +66,5 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 - `ErrorCode`・`ReservedErrors` は `VolTech.Server.Abstractions` の型になった(`using VolTech.Server.Abstractions;`)。errors.toml から生成していた業務エラーは、アプリの共有コードに C# の定数で書く
 - 生成していたラッパーは、上の形で手で書く
 - `DeviceTokenProvider` には `CallInvoker` ではなく `IDeviceService` のクライアントを渡す
-- `WithPlayerDiffApplier`・`WithBadgeApplier`・`WithNotificationApplier`、gRPC Monitor、`FakeCallInvoker`、`UnityAccountStore` などの Unity 用の部品は、まだ無い
+- `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` は、レスポンス(`IMessage`)ではなく `Common`(アプリの `TCommon`)を受け取る。`IHasPlayerDiff` などでレスポンスから取り出す処理は要らない
+- gRPC Monitor、`FakeCallInvoker`、`UnityAccountStore` などの Unity 用の部品は、まだ無い

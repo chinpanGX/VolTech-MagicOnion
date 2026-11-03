@@ -85,4 +85,43 @@ public sealed class GachaService : ServiceBase<IGachaService>, IGachaService
 }
 ```
 
+## 共通レスポンス項目
+
+player_diff・バッジ・通知は、アプリが 1 つの型(下の `AppCommon`)にまとめ、レスポンスの型に `IApiResponse<AppCommon>` を実装する。基盤は中身を知らない。
+
+```csharp
+// 共有コード
+[MessagePackObject]
+public sealed class AppCommon
+{
+    [Key(0)] public PlayerDiff? PlayerDiff { get; set; }          // 変更後の値。無くなったものは ID の一覧で持つ
+    [Key(1)] public Badge[]? Badges { get; set; }                 // 含まれない種類は変化なし
+    [Key(2)] public Notification[]? Notifications { get; set; }
+}
+
+[MessagePackObject]
+public sealed class DrawResult : IApiResponse<AppCommon>
+{
+    [Key(0)] public AppCommon? Common { get; set; }               // null なら変化なし。基盤が入れる
+    [Key(1)] public int[] CardIds { get; set; } = Array.Empty<int>();
+}
+
+// サーバー: コレクター。トランザクションごとに 1 つ作られる。コンストラクターで DI の部品を受け取れる
+public sealed class AppCollector : ICommonResponseCollector<AppCommon>
+{
+    public void UpsertCard(Card card) { ... }                     // 書き込み関数が記録する
+    public ValueTask<AppCommon?> BuildAsync(TxContext tx) { ... } // 本体の成功後、同じトランザクションの中で呼ばれる
+}
+
+builder.Services.AddVoltechServer(...).AddCommonResponse<AppCommon, AppCollector>();
+
+// 書き込み関数
+tx.GetCollector<AppCollector>().UpsertCard(card);
+```
+
+- ハンドラーは `Common` を自分で入れない。`RunAsync` が本体の後に `BuildAsync` を呼んで入れ、冪等性のためにレスポンスごと保存する。同じ `x-request-id` の再送には同じ `Common` が返る
+- 本体が失敗したら、コレクターの中身は捨てられる
+- `IApiResponse<>` を実装したレスポンスなのに `AddCommonResponse` を呼んでいない、または `TCommon` が違うと `INTERNAL` になる
+- 使わないレスポンスには `IApiResponse<>` を実装しない(実装すると、クライアントの反映処理が要る)
+
 振る舞いの詳細は [仕様書](../spec/index.md)。

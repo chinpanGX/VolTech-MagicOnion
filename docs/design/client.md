@@ -1,6 +1,6 @@
 # クライアント(Unity)
 
-VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作る。通信の骨格は流用でき、変わるのは `call` の型、レスポンス型の扱い、`DeviceTokenProvider` の通信部分の 3 点。`ApiCoreBuilder` の公開 API は残し、中身だけを差し替えれば、アプリ側のコードは書き直さずに済む(共通レスポンス項目の部品は除く。下の「移していないもの」)。
+VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作る。通信の骨格は流用でき、変わるのは `call` の型、レスポンス型の扱い、`DeviceTokenProvider` の通信部分の 3 点。`ApiCoreBuilder` の公開 API は残し、中身だけを差し替えれば、アプリ側のコードは書き直さずに済む(共通レスポンス項目の反映処理は、型引数が付く。下の「共通レスポンス項目の反映」)。
 
 | 対象 | 扱い | 理由 |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | `EncryptedFileAccountStore` などアカウント保存 | 流用 | `StoredAccount` は VolTech-gRPC 版のまま変えていない(protobuf。MessagePack に移すかは[決めること](../index.md#決めること)) |
 | `ApiHeaders`、`AppVersion`、`ServerClock` | 流用 | ヘッダー名が同じ |
 | `ApiCore.InvokeAsync` の `call`(`AsyncUnaryCall<T>`) | 差し替え | `UnaryResult<T>` に変える。`WithOptions(CallOptions)` でヘッダーと締め切りを渡す |
-| `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` | 差し替え | `IMessage` を `IApiResponse` に変える |
+| `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` | 差し替え | レスポンス(`IMessage`)ではなく、アプリの共通レスポンス項目の型 `TCommon` を受け取る `IPlayerDiffApplier<TCommon>` などにする |
 | `DeviceTokenProvider` の通信部分 | 差し替え | 生成された `DeviceGrpc` を MagicOnion の `IDeviceService` に替える |
 | `ApiServiceBase` と生成ラッパー、`RpcSettings` | 差し替え | 共有インターフェースの属性から設定を読む |
 | Tracing(gRPC Monitor) | 要確認 | protobuf メッセージの記録が前提だと思われる(未読) |
@@ -62,9 +62,23 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 - リフレクションにした理由: 読むのはラッパーを作るときの 1 回だけで、呼び出しのたびには読まない。ソースジェネレーターにすると、`Abstractions` の属性を読む生成器を基盤で作って Unity とサーバーの両方に入れることになり、今の規模では手間に見合わない。サーバーも同じ属性をリフレクションで読むので、読み方を揃えやすい。IL2CPP(AOT)でも属性を読めるかは確かめていない([確かめること](../index.md#確かめること))。読めなかったら、同じ属性を読むソースジェネレーターに変える(ラッパーに設定を書く形は、属性だけを読むという[仕様](../spec/headers.md#rpc-ごとの設定は属性に置く)から外れるので採らない)
 - 対応するのは `UnaryResult<T>` を返すメソッドだけ。レスポンスの無い `UnaryResult` には対応していない
 
-### 移していないもの
+### 共通レスポンス項目の反映
 
-- `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` と、`ApiCoreBuilder.WithPlayerDiffApplier`・`WithBadgeApplier`・`WithNotificationApplier`: `IApiResponse` が決まっていない([決めること](../index.md#決めること))ため。`ApiCore` の、成功したレスポンスの共通レスポンス項目を player_diff → バッジ → 通知の順に反映する処理(`ApplyCommonFieldsAsync`。反映の例外を `CLIENT_ERROR` にしてエラーハンドラーに渡す)も外した。今の `ApiCore` は、成功したらレスポンスヘッダー(`x-server-time`・`x-game-date`)だけを反映して返す
+[共通レスポンス項目](../spec/common-response.md) の反映を、VolTech-gRPC 版と同じ名前で持つ。
+
+```csharp
+public interface IPlayerDiffApplier<TCommon> where TCommon : class   { UniTask ApplyAsync(TCommon common); }
+public interface IBadgeApplier<TCommon> where TCommon : class        { UniTask ApplyAsync(TCommon common); }
+public interface INotificationApplier<TCommon> where TCommon : class { UniTask ApplyAsync(TCommon common); }
+```
+
+- `ApiCoreBuilder.WithPlayerDiffApplier<TCommon>`・`WithBadgeApplier<TCommon>`・`WithNotificationApplier<TCommon>` で渡す。どれも省略できる。`Build` で、渡した反映処理の `TCommon` がすべて同じかを確かめ、違えば `InvalidOperationException`
+- VolTech-gRPC 版はレスポンス(`IMessage`)を渡し、アプリが `IHasPlayerDiff` などで中身を取り出していた。この基盤では `ApiCore` が `IApiResponse<TCommon>` から `Common` を取り出して渡す。`Common` が null なら、どれも呼ばない
+- `ApiCore` は成功したレスポンスで、レスポンスヘッダーを反映した後、呼び出し側に返す前に player_diff → バッジ → 通知の順に呼ぶ(`ApplyCommonFieldsAsync`)。順番待ちの中で行う
+- 反映の例外は、どれを反映していたかとレスポンスの型をログに出し、`ErrorConverter.FromClientException` で `CLIENT_ERROR` にして共通エラーハンドラーに渡す。残りは呼ばない。通信の `try` の外で呼ぶので、エラーハンドラーが Retry を返しても送り直さない(VolTech-gRPC 版と同じ)
+- 反映処理を 1 つも渡していない `ApiCore` は、`Common` を見ない。反映処理と違う `TCommon` の `IApiResponse<>` を実装したレスポンスも見ない(型の判定を呼ぶたびにしないため。サーバーには 1 つの `TCommon` しか登録できないので、食い違いはサーバーで先に `INTERNAL` になる)
+
+### 移していないもの
 - Tracing(`Runtime/Tracing/`、`Editor/` の gRPC Monitor): 要確認のため
 - `Testing/FakeCallInvoker`・`FakeCall`: MagicOnion のクライアントは CallInvoker に MagicOnion の内部の型でリクエストを渡すので、RPC ごとに型付きの処理を登録する形のままでは使えない。テストは共有インターフェースを実装した偽のクライアントで書いた(`Tests/EditMode/`)。アプリ向けの偽のクライアントの形は決めていない
 - `Runtime/Unity/` のうち `ApiChannel` 以外(`UnityAccountStore`・`ServerClockResetter`・`UnityApiLogger`・`UnityAppVersion`): この表に載っておらず、置き場所(`Runtime/Client/` に入れるか、Unity 用の asmdef を分けるか)を決めていない
@@ -76,6 +90,7 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 
 - VolTech-gRPC 版から移した: `DefaultCommonErrorHandlerTests`・`EncryptedFileAccountStoreTests`・`RpcErrorDetailsTests`・`ServerClockTests`・`DeviceTokenProviderTests`(`FakeCallInvoker` の代わりに、`IDeviceService` を実装した偽のクライアントを使う)
 - 足した: `ApiCoreTests`。属性から RPC ごとの設定を読むこと、`authorization`・`x-request-id`・締め切りの付け方、`x-server-time`・`x-game-date` の反映、`UNAUTHENTICATED` での 1 回の再送(2 回続けて `UNAUTHENTICATED` なら、弾かれたトークンを捨て、それ以上は自動で再送せずに共通エラーハンドラーに `UNKNOWN_ERROR` を渡す。そこで共通エラーハンドラーが `ErrorDecision.Retry` を返したら、新しいトークンで送る)、`[SkipAuth]` の RPC は順番待ちをせず(冪等性の対象の RPC が応答を待っている間にも送れる)`x-request-id` を付けないこと、共通エラーハンドラーの `ErrorDecision.Retry` の後にまた `UNAUTHENTICATED` なら 1 回だけ自動で再送すること、セッションのキャンセルトークンを `CallOptions` に渡すこと、共通エラーハンドラーが `ErrorDecision.Retry` を返したら同じ `x-request-id` で送り直すこと、`ResetSession` でトークンとゲーム内の日付を捨てること、エラーの変換と `handledCodes`。偽のクライアントはレスポンスヘッダーを読めるように、`IResponseContext<T>` を包んだ `UnaryResult<T>` を返す
+- 足した: `CommonResponseTests`。player_diff → バッジ → 通知の順に `Common` を渡すこと、`Common` が null なら呼ばないこと、反映の例外で残りを呼ばず `CLIENT_ERROR` を共通エラーハンドラーに渡して失敗を返すこと(送り直さない)、古いセッションのレスポンスは反映しないこと、`TCommon` が食い違うと `Build` で例外になること
 - 足した: `ErrorPolicyProviderTests`。`ReservedErrors` の公開フィールドをリフレクションですべて列挙し、どれにも既定の action があり、[予約エラーの表](../spec/errors.md#予約エラー)と同じであることを確かめる。予約エラーを足して既定の action を入れ忘れると失敗する
 - 移していない: `ApiTraceTests`(Tracing)
 

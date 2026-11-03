@@ -15,6 +15,7 @@ Rust 版の `transaction` クレートと同じ振る舞いを C# で再現す�
 - `x-request-id` が無い・形が違うときは `INVALID_ARGUMENT`
 - `x-request-id` を別の RPC で使い回したら warn を出し、`INVALID_ARGUMENT` を返す
 - 再送で保存済みのレスポンスを返したときは、ゲームログを書かない
+- 共通レスポンス項目は、本体の成功後・保存の前に、同じトランザクションの中で詰める。保存済みのレスポンスには共通レスポンス項目も入っている([共通レスポンス項目](common-response.md))
 
 ## ゲームログ
 

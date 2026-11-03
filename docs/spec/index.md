@@ -30,3 +30,4 @@ Oct 23, 2026 · @Shota
 - [ヘッダーと RPC ごとの設定](headers.md): ヘッダー、`[SkipAuth]`・`[NoSideEffects]`、共通レスポンス項目
 - [認証](auth.md): 端末の登録、トークン、プレイヤーの状態
 - [冪等性・トランザクション・ゲームログ](transaction.md)
+- [共通レスポンス項目](common-response.md): player_diff・バッジ・通知の器と、サーバーで集めて詰める・クライアントで反映する順序
