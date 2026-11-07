@@ -48,7 +48,7 @@ RFC で指摘された問題は次の 4 つ。
 
 `ApiCore.SendOnceAsync` は、呼ぶたびに `CallOptions` を作り、`client.WithOptions(callOptions)` で渡している。中身は、ヘッダー(`authorization`・`x-request-id`・`x-game-date`・アプリのバージョンなど)、締め切り、セッションのキャンセルの 3 つ。
 
-MagicOnion の公式ドキュメントでは、呼び出しに共通するヘッダーは `IClientFilter` で付ける。RFC の Analysis 7 では、Monitor(設計書 4)も `IClientFilter` で全通信を記録する前提になっている。ヘッダーを付ける場所がフィルターの外に残ると、Monitor が見るリクエストと、実際に送ったヘッダーとがずれる。
+MagicOnion の公式ドキュメントでは、呼び出しに共通するヘッダーは `IClientFilter` で付ける。RFC の Analysis 7 では、Monitor(設計書 4)も `IClientFilter` で全通信を記録する前提になっている。ただし、`WithOptions` のヘッダーもフィルターから読めるので、Monitor のために移す必要はない。移す理由は、公式の書き方に合わせること(2026-11-07 にオーナーが決定)。
 
 ただし、フィルターだけでは移しきれない。2026-11-04 に、MagicOnion.Client 7.11.0 を .NET 10 の動的クライアントで動かして確かめた(スクラッチのプログラム。リポジトリには残していない)。Unity のソースジェネレーターのクライアントでも同じかは未確認。
 
@@ -59,7 +59,7 @@ MagicOnion の公式ドキュメントでは、呼び出しに共通するヘッ
 - `WithOptions` で渡したヘッダーは、フィルターの `context.CallOptions.Headers` で読める
 - 先頭のフィルターの `SendAsync` は、RPC のメソッドを呼んだ時点で、同じスレッドで同期的に始まる(`await` の前に入る)。`AsyncLocal` に入れた値は、待機をまたがずに読める(2026-11-07、同じ方法で確かめた。IL2CPP でも同じに動く前提で設計し、実機の確認は Verification Plan に入れる)
 
-そのため、呼び出しごとの値を `ApiCore` とフィルターの間でどう受け渡すかを決める必要がある。`x-request-id` は再送で同じ値を使う。`authorization` は RPC が認証を要るかを知る必要があり、弾かれたトークンを `ApiCore` が `tokenProvider.Invalidate` に渡すので、使った値を `ApiCore` へ返す必要もある。
+そのため、呼び出しごとの値を `ApiCore` からフィルターへどう渡すかを決める必要がある。`x-request-id` は再送で同じ値を使う。トークンの取得はフィルターに移せない。今は `GetTokenAsync` の後に締め切りを計算しているので、フィルターで待つと、順番待ち・端末登録・発行の時間が RPC の締め切りを消費する(締め切りはフィルターから変えられない)。
 
 ## Goals
 
@@ -89,7 +89,7 @@ Technical Plan の節で、選択肢を挙げてオーナーが決める。
 *   **Q1(解決)**: `Common` が詰められないレスポンスは、実行時に検査せず、ハンドラーをコード生成で包んで書けなくする。生成はクライアントのラッパーも含む両側(2026-11-07)
 *   **Q2(解決)**: 保存済みのレスポンスを今の型として読めないときは、例外のまま `INTERNAL` にする。コードは足さず、動きを仕様に書く。処理はコミット済みなので、再送は成功させられない。タイトルに戻れば、サインインで全件を取り直せる。値がずれて読めた場合は検出しない(2026-11-07)
 *   **Q3(解決)**: クライアントの反映処理は、`TCommon` を受け取る 1 つにまとめる。player_diff → バッジ → 通知の順は、アプリが守る取り決めにする。VolTech-gRPC 版と名前はそろわなくなる(2026-11-07)
-*   **Q4(解決)**: ヘッダーは全部 `IClientFilter` に移す。呼び出しごとの値(`x-request-id`・認証の要否・使ったトークン)は、`AsyncLocal` の入れ物で `ApiCore` とフィルターが共有する。締め切りとキャンセルは `WithOptions` に残る(2026-11-07)
+*   **Q4(解決)**: ヘッダーは全部 `IClientFilter` で付け、公式の書き方に合わせる。トークンの取得は `ApiCore` に残し、取得した値と `x-request-id` を `AsyncLocal` の入れ物でフィルターへ渡す。締め切りとキャンセルは `WithOptions` に残る(2026-11-07。レビューの指摘を受けて、取得まで移す形から直した)
 *   **Q5(解決)**: アプリは `IClientFilter` を足せない。フィルターは基盤のものだけで、基盤のヘッダーのフィルターが必ず先頭になる。Monitor(設計書 4)も基盤の内部で足す。必要になったら、基盤より内側に足す口を作る(2026-11-07)
 *   **Q6(解決)**: ジェネレーターの対象は、アプリが `partial class` に `typeof(共有インターフェース)` を書いた属性で明示する。MagicOnion の `[MagicOnionClientGeneration]` と同じ形(2026-11-07)
 *   **Q6b(解決)**: 生成する基底クラスは、全 RPC で `RunAsync` を通す。外す属性は足さない。DB を使わない RPC が必要になったら、そのサービスだけ `ServiceBase<T>` を手書きにする(2026-11-07)
@@ -191,12 +191,14 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 ### 2. クライアントのヘッダー付与(`IClientFilter`)
 
 *   **クライアントを作る場所**: アプリは `CallInvoker`・シリアライザー・`IMagicOnionClientFactoryProvider`(アプリごとの生成物)を `ApiCoreBuilder` に 1 回渡す。`ApiCore` が基盤のフィルターを付けて `MagicOnionClient.Create<T>` を呼ぶ。これでフィルターの渡し忘れが無くなる
-*   **呼び出しごとの入れ物**: `ApiCallContext`(内部の型)が `RequestId`・`RequiresAuth`(入力)と `UsedToken`(出力)を持つ。`ApiCore` が送る直前に `AsyncLocal` に入れ、`call(...)` の直後に外す
-*   **読む順番**: `ApiHeaderFilter` は `SendAsync` の入り口、最初の `await` の前に入れ物の参照を取る。確かめたとおり、ここは `call(...)` の中で同期的に動くので、UniTask の待機をまたがない
-*   **付けるヘッダー**: `authorization`(認証が要るときだけ)、`x-request-id`(冪等性の対象だけ)、アプリのバージョン、`x-game-date`(持っているときだけ)。名前・値・条件は今の `CreateHeaders` と同じ
-*   **トークン**: フィルターが `GetTokenAsync` を待ち、使った値を `UsedToken` に書く。`ApiCore` は再認証のときにそれを `Invalidate` に渡す。トークンを取る途中の失敗は `UsedToken` が null のままなので、今と同じく何も捨てない
+*   **送る順番**: `ApiCore` が今と同じ順で動く。トークンを取る → 締め切りを計算する → 入れ物に値を入れる → `call(...)` で送る
+*   **呼び出しごとの入れ物**: `ApiCallContext`(内部の型)が `Token`・`RequestId` を持つ。`ApiCore` が `call(...)` の直前に `AsyncLocal` に入れ、`finally` で外す
+*   **読む順番**: `ApiHeaderFilter` は `SendAsync` の入り口で入れ物を読む。フィルターは何も待たないので、読むのも付けるのも `call(...)` の中で終わる。入れ物が空なら例外にする(黙ってヘッダーなしで送らない)
+*   **付けるヘッダー**: `authorization`(トークンがあるときだけ)、`x-request-id`(あるときだけ)、アプリのバージョン、`x-game-date`(持っているときだけ)。名前・値・条件は今の `CreateHeaders` と同じ
+*   **トークン**: 取得・`Invalidate`・再認証は `ApiCore` のまま。`CorruptedAccountDataException` などはフィルターを通らないので、`ACCOUNT_*` の扱いは変わらない
 *   **`WithOptions` に残るもの**: 締め切りとセッションのキャンセルだけ
 *   **`IDeviceService`**: `DeviceTokenProvider` が直接呼ぶ今の形のまま。フィルターは通さない。トークンを取るためのトークンが要らないため
+*   **未確認**: フィルターが `call(...)` の中で同期的に始まることを確かめたのは、.NET の動的クライアントだけ。ソースジェネレーターのクライアント(Sandbox の `SmokeClient`)で確かめる
 *   **テストの分け方**: ヘッダーを作る処理を内部の `ApiHeaderWriter` に置き、`ApiHeaderFilter` は薄くする。偽のクライアントはフィルターを通らないので、`ApiCoreTests` の偽物が `ApiHeaderWriter` を呼び、今のテストと同じヘッダーを確かめる
 
 ### 3. 共通レスポンス項目の反映
