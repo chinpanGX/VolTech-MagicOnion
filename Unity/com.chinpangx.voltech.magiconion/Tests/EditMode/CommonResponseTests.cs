@@ -26,7 +26,6 @@ namespace VolTech.Client.Tests.EditMode
         private RecordingErrorHandler errorHandler;
         private List<string> applied;
         private ApiCore core;
-        private CommonApi api;
 
         /// <summary>
         /// テストごとに、Common を返す偽のサービスと、反映処理を渡した ApiCore を作る。
@@ -35,15 +34,10 @@ namespace VolTech.Client.Tests.EditMode
         public void SetUp()
         {
             invoker = new FakeCallInvoker { Handler = _ => Success(new CommonResult { Common = new CommonFields { Value = "v" } }) };
-            client = MagicOnionClient.Create<ICommonTestService>(
-                invoker,
-                TestClients.SerializerProvider,
-                Array.Empty<IClientFilter>(),
-                TestClients.ClientFactoryProvider);
             errorHandler = new RecordingErrorHandler();
             applied = new List<string>();
             core = CreateBuilder().WithCommonResponseApplier(new RecordingApplier("common", applied)).Build();
-            api = new CommonApi(core, client);
+            client = core.CreateClient<ICommonTestService>();
         }
 
         /// <summary>
@@ -53,9 +47,9 @@ namespace VolTech.Client.Tests.EditMode
         [Description("反映処理は Common を受け取り、呼び出し側に返る前に反映が終わっている")]
         public IEnumerator AppliesBeforeReturning() => UniTask.ToCoroutine(async () =>
         {
-            var result = await api.DrawAsync(1);
+            var result = await client.DrawAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(applied, Is.EqualTo(new[] { "common:v" }));
         });
 
@@ -68,9 +62,9 @@ namespace VolTech.Client.Tests.EditMode
         {
             invoker.Handler = _ => Success(new CommonResult());
 
-            var result = await api.DrawAsync(1);
+            var result = await client.DrawAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(applied, Is.Empty);
         });
 
@@ -83,9 +77,9 @@ namespace VolTech.Client.Tests.EditMode
         {
             var withoutApplier = CreateBuilder().Build();
 
-            var result = await new CommonApi(withoutApplier, client).DrawAsync(1);
+            var result = await withoutApplier.CreateClient<ICommonTestService>().DrawAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(applied, Is.Empty);
         });
 
@@ -101,7 +95,7 @@ namespace VolTech.Client.Tests.EditMode
                 .WithCommonResponseApplier<CommonFields>(null)
                 .Build();
 
-            await new CommonApi(removed, client).DrawAsync(1);
+            await removed.CreateClient<ICommonTestService>().DrawAsync(1).ToResult();
 
             Assert.That(applied, Is.Empty);
         });
@@ -118,7 +112,7 @@ namespace VolTech.Client.Tests.EditMode
                 .WithCommonResponseApplier(new RecordingApplier("second", applied))
                 .Build();
 
-            await new CommonApi(replaced, client).DrawAsync(1);
+            await replaced.CreateClient<ICommonTestService>().DrawAsync(1).ToResult();
 
             Assert.That(applied, Is.EqualTo(new[] { "second:v" }));
         });
@@ -132,9 +126,9 @@ namespace VolTech.Client.Tests.EditMode
         {
             invoker.Handler = _ => Success(new PlainResult());
 
-            var result = await api.GetPlainAsync(1);
+            var result = await client.GetPlainAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(applied, Is.Empty);
         });
 
@@ -148,9 +142,9 @@ namespace VolTech.Client.Tests.EditMode
             var other = new OtherApplier();
             var otherCore = CreateBuilder().WithCommonResponseApplier(other).Build();
 
-            var result = await new CommonApi(otherCore, client).DrawAsync(1);
+            var result = await otherCore.CreateClient<ICommonTestService>().DrawAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(other.Called, Is.False);
         });
 
@@ -165,9 +159,9 @@ namespace VolTech.Client.Tests.EditMode
             // エラーハンドラーが Retry を選んでも、サーバーの処理は成功しているので送り直さない
             errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
 
-            var result = await new CommonApi(failing, client).DrawAsync(1);
+            var result = await failing.CreateClient<ICommonTestService>().DrawAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.IsError, Is.True);
             Assert.That(result.Error.Code, Is.EqualTo(ReservedErrors.ClientError));
             Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.ClientError }));
             Assert.That(invoker.Calls.Count, Is.EqualTo(1));
@@ -186,16 +180,23 @@ namespace VolTech.Client.Tests.EditMode
                 return Success(new CommonResult { Common = new CommonFields { Value = "v" } });
             };
 
-            var result = await api.DrawAsync(1);
+            var result = await client.DrawAsync(1).ToResult();
 
-            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.IsError, Is.True);
             Assert.That(result.Error.IsDiscarded, Is.True);
             Assert.That(applied, Is.Empty);
         });
 
         private ApiCoreBuilder CreateBuilder()
         {
-            return ApiCore.CreateBuilder(new ApiCoreOptions(), new FixedTokenProvider(), new ErrorPolicyProvider(Array.Empty<ErrorDefinition>()), errorHandler)
+            return ApiCore.CreateBuilder(
+                    invoker,
+                    TestClients.SerializerProvider,
+                    TestClients.ClientFactoryProvider,
+                    new ApiCoreOptions(),
+                    new FixedTokenProvider(),
+                    new ErrorPolicyProvider(Array.Empty<ErrorDefinition>()),
+                    errorHandler)
                 .WithServerClock(new ServerClock(() => TimeSpan.Zero));
         }
 
@@ -252,24 +253,6 @@ namespace VolTech.Client.Tests.EditMode
             {
                 Called = true;
                 return UniTask.CompletedTask;
-            }
-        }
-
-        private sealed class CommonApi : ApiServiceBase<ICommonTestService>
-        {
-            public CommonApi(ApiCore core, ICommonTestService client)
-                : base(core, client)
-            {
-            }
-
-            public UniTask<ApiResult<CommonResult>> DrawAsync(int count)
-            {
-                return InvokeAsync(nameof(ICommonTestService.DrawAsync), count, static (client, request) => client.DrawAsync(request));
-            }
-
-            public UniTask<ApiResult<PlainResult>> GetPlainAsync(int id)
-            {
-                return InvokeAsync(nameof(ICommonTestService.GetPlainAsync), id, static (client, request) => client.GetPlainAsync(request));
             }
         }
 

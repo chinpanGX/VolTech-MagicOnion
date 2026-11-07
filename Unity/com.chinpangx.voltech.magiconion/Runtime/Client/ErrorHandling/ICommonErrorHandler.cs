@@ -3,7 +3,7 @@ using Cysharp.Threading.Tasks;
 namespace VolTech.Client
 {
     /// <summary>
-    /// handledCodes で受け取らなかったエラーを処理する。ダイアログを出し、その後の動きを返す。
+    /// WithHandledCodes で指定しなかったエラーを処理する。ダイアログを出し、その後の動きを返す。
     /// </summary>
     public interface ICommonErrorHandler
     {

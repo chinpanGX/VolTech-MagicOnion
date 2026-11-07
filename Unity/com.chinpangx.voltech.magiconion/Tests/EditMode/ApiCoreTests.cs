@@ -11,14 +11,15 @@ using MagicOnion.Client;
 using MessagePack;
 using NUnit.Framework;
 using UnityEngine.TestTools;
+using VolTech.Client.Auth;
 using VolTech.Server.Abstractions;
 
 namespace VolTech.Client.Tests.EditMode
 {
     /// <summary>
-    /// ApiCore と ApiServiceBase が、MagicOnion のクライアントで、ヘッダー・RPC ごとの設定・再認証・エラーの変換を仕様どおりに行うことを確かめる。
+    /// ApiCore が、MagicOnion のクライアントで、ヘッダー・RPC ごとの設定・再認証・エラーの変換を仕様どおりに行うことを確かめる。
     /// </summary>
-    [Description("ApiCore と ApiServiceBase が、MagicOnion のクライアントでヘッダー・RPC ごとの設定・再認証・エラーの変換を仕様どおりに行うことを確かめる")]
+    [Description("ApiCore が、MagicOnion のクライアントでヘッダー・RPC ごとの設定・再認証・エラーの変換を仕様どおりに行うことを確かめる")]
     public class ApiCoreTests
     {
         private FakeCallInvoker invoker;
@@ -26,7 +27,7 @@ namespace VolTech.Client.Tests.EditMode
         private RecordingErrorHandler errorHandler;
         private ServerClock serverClock;
         private ApiCore core;
-        private TestApi api;
+        private ITestService client;
 
         /// <summary>
         /// テストごとに、成功を返す偽のサービスと、それを呼ぶ ApiCore を作る。
@@ -38,18 +39,8 @@ namespace VolTech.Client.Tests.EditMode
             tokenProvider = new FakeTokenProvider();
             errorHandler = new RecordingErrorHandler();
             serverClock = new ServerClock(() => TimeSpan.Zero);
-            core = ApiCore.CreateBuilder(
-                    new ApiCoreOptions(),
-                    tokenProvider,
-                    new ErrorPolicyProvider(new[] { new ErrorDefinition(TestErrors.NotEnough, ErrorAction.Stay) }),
-                    errorHandler)
-                .WithServerClock(serverClock)
-                .Build();
-            api = new TestApi(core, MagicOnionClient.Create<ITestService>(
-                invoker,
-                TestClients.SerializerProvider,
-                Array.Empty<IClientFilter>(),
-                TestClients.ClientFactoryProvider));
+            core = CreateBuilder(new ApiCoreOptions()).WithServerClock(serverClock).Build();
+            client = core.CreateClient<ITestService>();
         }
 
         /// <summary>
@@ -80,8 +71,8 @@ namespace VolTech.Client.Tests.EditMode
         [Description("認証が要る RPC には authorization: Bearer を付け、冪等性の対象にだけ x-request-id を付ける")]
         public IEnumerator SendsAuthorizationAndRequestId() => UniTask.ToCoroutine(async () =>
         {
-            var write = await api.WriteAsync("a");
-            var read = await api.ReadAsync(1);
+            var write = await client.WriteAsync("a").ToResult();
+            var read = await client.ReadAsync(1).ToResult();
 
             Assert.That(write.Value, Is.EqualTo("WriteAsync:ok"));
             Assert.That(read.Value, Is.EqualTo("ReadAsync:ok"));
@@ -111,9 +102,9 @@ namespace VolTech.Client.Tests.EditMode
                     { ApiHeaders.GameDate, gameDates.Dequeue() },
                 });
 
-            await api.ReadAsync(1);
-            await api.ReadAsync(2);
-            await api.ReadAsync(3);
+            await client.ReadAsync(1).ToResult();
+            await client.ReadAsync(2).ToResult();
+            await client.ReadAsync(3).ToResult();
 
             Assert.That(serverClock.Now, Is.EqualTo(serverTime));
             Assert.That(invoker.Calls[0].Headers.GetValue(ApiHeaders.GameDate), Is.Null);
@@ -132,9 +123,9 @@ namespace VolTech.Client.Tests.EditMode
                 ? Failure(FakeRpcErrors.Status(StatusCode.Unauthenticated))
                 : Success("ok");
 
-            var result = await api.WriteAsync("a");
+            var result = await client.WriteAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1" }));
             Assert.That(invoker.Calls.Count, Is.EqualTo(2));
             Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-2"));
@@ -153,9 +144,9 @@ namespace VolTech.Client.Tests.EditMode
         {
             invoker.Handler = call => Failure(FakeRpcErrors.Status(StatusCode.Unauthenticated));
 
-            var result = await api.WriteAsync("a");
+            var result = await client.WriteAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.IsError, Is.True);
             Assert.That(invoker.Calls.Count, Is.EqualTo(2));
             Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1", "token-2" }));
             Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.UnknownError }));
@@ -174,9 +165,9 @@ namespace VolTech.Client.Tests.EditMode
                 : Success("ok");
             errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
 
-            var result = await api.WriteAsync("a");
+            var result = await client.WriteAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(invoker.Calls.Count, Is.EqualTo(3));
             Assert.That(invoker.Calls[2].Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-3"));
             var requestId = invoker.Calls[0].Headers.GetValue(ApiHeaders.RequestId);
@@ -191,7 +182,7 @@ namespace VolTech.Client.Tests.EditMode
         [Description("[SkipAuth] の RPC には authorization も x-request-id も付けない")]
         public IEnumerator SkipAuthRpcSendsNoTokenOrRequestId() => UniTask.ToCoroutine(async () =>
         {
-            var result = await api.PublicAsync("a");
+            var result = await client.PublicAsync("a").ToResult();
 
             Assert.That(result.Value, Is.EqualTo("PublicAsync:ok"));
             Assert.That(invoker.Calls[0].Headers.GetValue(ApiHeaders.Authorization), Is.Null);
@@ -210,9 +201,9 @@ namespace VolTech.Client.Tests.EditMode
                 : Success("ok");
             errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
 
-            var result = await api.WriteAsync("a");
+            var result = await client.WriteAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(invoker.Calls.Count, Is.EqualTo(4));
             Assert.That(errorHandler.Errors.Count, Is.EqualTo(1));
             Assert.That(tokenProvider.Invalidated, Is.EqualTo(new[] { "token-1", "token-2", "token-3" }));
@@ -231,8 +222,8 @@ namespace VolTech.Client.Tests.EditMode
                 ? pendingWrite.Task
                 : Success(MethodOf(call) + ":ok");
 
-            var write = api.WriteAsync("a");
-            var publicCall = api.PublicAsync("b");
+            var write = client.WriteAsync("a").ToResult();
+            var publicCall = client.PublicAsync("b").ToResult();
 
             // 順番待ちをしていなければ、WriteAsync の応答を待たずに終わる
             var publicResult = await publicCall;
@@ -254,9 +245,9 @@ namespace VolTech.Client.Tests.EditMode
         {
             invoker.Handler = call => Failure(FakeRpcErrors.Status(StatusCode.Unauthenticated));
 
-            var result = await api.PublicAsync("a");
+            var result = await client.PublicAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.IsError, Is.True);
             Assert.That(invoker.Calls.Count, Is.EqualTo(1));
             Assert.That(tokenProvider.Invalidated, Is.Empty);
             Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.UnknownError }));
@@ -269,13 +260,13 @@ namespace VolTech.Client.Tests.EditMode
         [Description("CallOptions にセッションのキャンセルトークンを渡し、ResetSession でキャンセルする")]
         public IEnumerator PassesSessionCancellationToken() => UniTask.ToCoroutine(async () =>
         {
-            await api.ReadAsync(1);
+            await client.ReadAsync(1).ToResult();
             var token = invoker.Calls[0].Options.CancellationToken;
             Assert.That(token.CanBeCanceled, Is.True);
             Assert.That(token.IsCancellationRequested, Is.False);
 
             core.ResetSession();
-            await api.ReadAsync(2);
+            await client.ReadAsync(2).ToResult();
 
             Assert.That(token.IsCancellationRequested, Is.True);
             Assert.That(invoker.Calls[1].Options.CancellationToken.IsCancellationRequested, Is.False);
@@ -293,9 +284,9 @@ namespace VolTech.Client.Tests.EditMode
                 : Success("ok");
             errorHandler.Decisions.Enqueue(ErrorDecision.Retry);
 
-            var result = await api.WriteAsync("a");
+            var result = await client.WriteAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.IsError, Is.False);
             Assert.That(invoker.Calls.Count, Is.EqualTo(2));
             Assert.That(RequestIdRules.IsValid(invoker.Calls[0].Headers.GetValue(ApiHeaders.RequestId)), Is.True);
             Assert.That(
@@ -312,11 +303,11 @@ namespace VolTech.Client.Tests.EditMode
         public IEnumerator ResetSessionDropsTokenAndGameDate() => UniTask.ToCoroutine(async () =>
         {
             invoker.Handler = call => Success("ok", new Metadata { { ApiHeaders.GameDate, "2026-10-30" } });
-            await api.ReadAsync(1);
-            await api.ReadAsync(2);
+            await client.ReadAsync(1).ToResult();
+            await client.ReadAsync(2).ToResult();
 
             core.ResetSession();
-            await api.ReadAsync(3);
+            await client.ReadAsync(3).ToResult();
 
             Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.GameDate), Is.EqualTo("2026-10-30"));
             Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.Authorization), Is.EqualTo("Bearer token-1"));
@@ -333,9 +324,9 @@ namespace VolTech.Client.Tests.EditMode
         {
             invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(TestErrors.NotEnough, "not enough"));
 
-            var result = await api.WriteAsync("a", new[] { TestErrors.NotEnough });
+            var result = await client.WithHandledCodes(TestErrors.NotEnough).WriteAsync("a").ToResult();
 
-            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.IsError, Is.True);
             Assert.That(result.Error.Code, Is.EqualTo(TestErrors.NotEnough));
             Assert.That(result.Error.Action, Is.EqualTo(ErrorAction.Stay));
             Assert.That(errorHandler.Errors, Is.Empty);
@@ -350,7 +341,7 @@ namespace VolTech.Client.Tests.EditMode
         {
             invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(ReservedErrors.DateChanged));
 
-            var result = await api.WriteAsync("a", new[] { ReservedErrors.DateChanged });
+            var result = await client.WithHandledCodes(ReservedErrors.DateChanged).WriteAsync("a").ToResult();
 
             Assert.That(result.Error.Code, Is.EqualTo(ReservedErrors.DateChanged));
             Assert.That(errorHandler.Errors.Select(error => error.Code), Is.EqualTo(new[] { ReservedErrors.DateChanged }));
@@ -368,21 +359,287 @@ namespace VolTech.Client.Tests.EditMode
                     ? FakeRpcErrors.FailedPrecondition(new ErrorCode("test", "NEWER_ERROR"))
                     : FakeRpcErrors.Status(StatusCode.Internal));
 
-            var unknown = await api.ReadAsync(1);
-            var internalError = await api.ReadAsync(2);
+            var unknown = await client.ReadAsync(1).ToResult();
+            var internalError = await client.ReadAsync(2).ToResult();
 
             Assert.That(unknown.Error.Code, Is.EqualTo(ReservedErrors.UnknownError));
             Assert.That(internalError.Error.Code, Is.EqualTo(ReservedErrors.InternalError));
         });
 
         /// <summary>
-        /// 共有インターフェースに無いメソッドの名前を渡すと、ArgumentException にする。
+        /// アプリのバージョンのヘッダーは、ApiCoreOptions.AppVersion があるときだけ付ける。
         /// </summary>
-        [Test]
-        [Description("共有インターフェースに無いメソッドの名前を渡すと、ArgumentException にする")]
-        public void UnknownMethodNameThrows()
+        [UnityTest]
+        [Description("アプリのバージョンのヘッダーは、ApiCoreOptions.AppVersion があるときだけ付ける")]
+        public IEnumerator SendsAppVersion() => UniTask.ToCoroutine(async () =>
         {
-            Assert.Throws<ArgumentException>(() => api.CallUnknown());
+            var withVersion = CreateBuilder(new ApiCoreOptions(new AppVersion(AppVersion.Android, 42))).Build().CreateClient<ITestService>();
+
+            await client.ReadAsync(1).ToResult();
+            await withVersion.ReadAsync(1).ToResult();
+
+            Assert.That(invoker.Calls[0].Headers.GetValue(ApiHeaders.AppPlatform), Is.Null);
+            Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.AppPlatform), Is.EqualTo("android"));
+            Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.AppVersion), Is.EqualTo("42"));
+        });
+
+        /// <summary>
+        /// 別のサービスのクライアントどうしでも、冪等性の対象の RPC は順番に送る。
+        /// </summary>
+        [UnityTest]
+        [Description("別のサービスのクライアントどうしでも、冪等性の対象の RPC は順番に送る")]
+        public IEnumerator IdempotentRpcsWaitAcrossServices() => UniTask.ToCoroutine(async () =>
+        {
+            var other = core.CreateClient<IOtherTestService>();
+            var pendingWrite = new TaskCompletionSource<FakeResult>();
+            invoker.Handler = call => call.Index == 0 ? pendingWrite.Task : Success("other");
+
+            var first = client.WriteAsync("a").ToResult();
+            var second = other.WriteAsync("b").ToResult();
+            await UniTask.Yield();
+
+            Assert.That(invoker.Calls.Count, Is.EqualTo(1));
+
+            pendingWrite.SetResult(await Success("written"));
+            await first;
+            await second;
+
+            Assert.That(invoker.Calls.Count, Is.EqualTo(2));
+        });
+
+        /// <summary>
+        /// 同じクライアントの同時の呼び出しで、ヘッダーが混ざらない。
+        /// </summary>
+        [UnityTest]
+        [Description("同じクライアントの同時の呼び出しで、ヘッダーが混ざらない")]
+        public IEnumerator ConcurrentCallsDoNotShareHeaders() => UniTask.ToCoroutine(async () =>
+        {
+            var pendingWrite = new TaskCompletionSource<FakeResult>();
+            invoker.Handler = call => MethodOf(call) == nameof(ITestService.WriteAsync) ? pendingWrite.Task : Success("ok");
+
+            var write = client.WriteAsync("a").ToResult();
+            await client.PublicAsync("b").ToResult();
+            pendingWrite.SetResult(await Success("written"));
+            await write;
+
+            Assert.That(invoker.Calls[0].Headers.GetValue(ApiHeaders.RequestId), Is.Not.Null);
+            Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.RequestId), Is.Null);
+            Assert.That(invoker.Calls[1].Headers.GetValue(ApiHeaders.Authorization), Is.Null);
+        });
+
+        /// <summary>
+        /// 内部のヘッダーと、アプリが WithHeaders で付けたヘッダーは送らない。
+        /// </summary>
+        [UnityTest]
+        [Description("内部のヘッダーと、アプリが WithHeaders で付けたヘッダーは送らない")]
+        public IEnumerator SendsOnlyFoundationHeaders() => UniTask.ToCoroutine(async () =>
+        {
+            await client.WithHandledCodes(TestErrors.NotEnough).ReadAsync(1).ToResult();
+            await client.WithHeaders(new Metadata { { "x-app-header", "1" } }).ReadAsync(2).ToResult();
+
+            Assert.That(invoker.Calls[0].Headers.Select(entry => entry.Key), Is.EqualTo(new[] { ApiHeaders.Authorization }));
+            Assert.That(invoker.Calls[1].Headers.Select(entry => entry.Key), Is.EqualTo(new[] { ApiHeaders.Authorization }));
+        });
+
+        /// <summary>
+        /// WithHandledCodes のクライアントを変数に持って何度呼んでも、指定が効く。
+        /// </summary>
+        [UnityTest]
+        [Description("WithHandledCodes のクライアントを変数に持って何度呼んでも、指定が効く")]
+        public IEnumerator HandledCodesWorkOnHeldClient() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(TestErrors.NotEnough, "not enough"));
+            var held = client.WithHandledCodes(TestErrors.NotEnough);
+
+            await held.ReadAsync(1).ToResult();
+            var second = await held.ReadAsync(2).ToResult();
+
+            Assert.That(second.IsError, Is.True);
+            Assert.That(second.ErrorCode, Is.EqualTo(TestErrors.NotEnough));
+            Assert.That(second.ErrorMessage, Is.Not.Null);
+            Assert.That(errorHandler.Errors, Is.Empty);
+        });
+
+        /// <summary>
+        /// 締め切りは試行ごとに計算する。
+        /// </summary>
+        [UnityTest]
+        [Description("締め切りは試行ごとに計算する")]
+        public IEnumerator DeadlineIsSetForEachAttempt() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = call => invoker.Calls.Count == 1
+                ? Failure(FakeRpcErrors.Status(StatusCode.Unauthenticated))
+                : Success("ok");
+
+            await client.WriteAsync("a").ToResult();
+
+            Assert.That(invoker.Calls[0].Options.Deadline, Is.Not.Null);
+            Assert.That(invoker.Calls[1].Options.Deadline, Is.GreaterThanOrEqualTo(invoker.Calls[0].Options.Deadline));
+        });
+
+        /// <summary>
+        /// トークンの取得の間にセッションを終わらせると、通信に進まずに捨てる。
+        /// </summary>
+        [UnityTest]
+        [Description("トークンの取得の間にセッションを終わらせると、通信に進まずに捨てる")]
+        public IEnumerator ResetWhileGettingTokenDiscardsTheCall() => UniTask.ToCoroutine(async () =>
+        {
+            var handled = 0;
+            invoker.Handler = call =>
+            {
+                handled++;
+                return Success("ok");
+            };
+            tokenProvider.OnGetToken = () =>
+            {
+                tokenProvider.OnGetToken = null;
+                core.ResetSession();
+            };
+
+            var result = await client.WriteAsync("a").ToResult();
+
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error.IsDiscarded, Is.True);
+            Assert.That(handled, Is.Zero);
+        });
+
+        /// <summary>
+        /// 順番待ちの間にセッションを終わらせると、送らずに捨てる。
+        /// </summary>
+        [UnityTest]
+        [Description("順番待ちの間にセッションを終わらせると、送らずに捨てる")]
+        public IEnumerator ResetWhileWaitingInQueueDiscardsTheCall() => UniTask.ToCoroutine(async () =>
+        {
+            var pendingWrite = new TaskCompletionSource<FakeResult>();
+            invoker.Handler = call => pendingWrite.Task;
+
+            var first = client.WriteAsync("a").ToResult();
+            var second = client.WriteAsync("b").ToResult();
+            core.ResetSession();
+            var secondResult = await second;
+            pendingWrite.SetResult(await Success("written"));
+            await first;
+
+            Assert.That(secondResult.Error.IsDiscarded, Is.True);
+            Assert.That(invoker.Calls.Count, Is.EqualTo(1));
+        });
+
+        /// <summary>
+        /// ToResult を付けないと、共通エラーハンドラーの処理の後で ApiException が届く。
+        /// </summary>
+        [UnityTest]
+        [Description("ToResult を付けないと、共通エラーハンドラーの処理の後で ApiException が届く")]
+        public IEnumerator ApiExceptionReachesCallerWithoutToResult() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = call => Failure(FakeRpcErrors.Status(StatusCode.Internal));
+
+            ApiException caught = null;
+            try
+            {
+                await client.ReadAsync(1);
+            }
+            catch (ApiException exception)
+            {
+                caught = exception;
+            }
+
+            Assert.That(caught, Is.Not.Null);
+            Assert.That(caught.Error.Code, Is.EqualTo(ReservedErrors.InternalError));
+            Assert.That(errorHandler.Errors.Count, Is.EqualTo(1));
+        });
+
+        /// <summary>
+        /// WithoutActivity は進行中を知らせない。指定が無ければ知らせる。
+        /// </summary>
+        [UnityTest]
+        [Description("WithoutActivity は進行中を知らせない。指定が無ければ知らせる")]
+        public IEnumerator WithoutActivityDoesNotNotify() => UniTask.ToCoroutine(async () =>
+        {
+            var activity = new RecordingActivityHandler();
+            var notifying = CreateBuilder(new ApiCoreOptions()).AddActivityHandler(activity).Build().CreateClient<ITestService>();
+
+            await notifying.WithoutActivity().ReadAsync(1).ToResult();
+            Assert.That(activity.Started, Is.Zero);
+
+            await notifying.ReadAsync(2).ToResult();
+            Assert.That(activity.Started, Is.EqualTo(1));
+            Assert.That(activity.Ended, Is.EqualTo(1));
+        });
+
+        /// <summary>
+        /// WithoutActivity にコードを渡すと、WithHandledCodes と同じく共通エラーハンドラーを通さない。
+        /// </summary>
+        [UnityTest]
+        [Description("WithoutActivity にコードを渡すと、共通エラーハンドラーを通さない")]
+        public IEnumerator WithoutActivityCanAlsoHandleCodes() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(TestErrors.NotEnough, "not enough"));
+
+            var result = await client.WithoutActivity(TestErrors.NotEnough).ReadAsync(1).ToResult();
+
+            Assert.That(result.ErrorCode, Is.EqualTo(TestErrors.NotEnough));
+            Assert.That(errorHandler.Errors, Is.Empty);
+        });
+
+        /// <summary>
+        /// 端末のアカウント情報の読み書きの失敗は、共通エラーハンドラーを通さず、呼び出し側に返す。
+        /// </summary>
+        [UnityTest]
+        [Description("端末のアカウント情報の読み書きの失敗は、共通エラーハンドラーを通さず、呼び出し側に返す")]
+        public IEnumerator AccountErrorsGoToCaller() => UniTask.ToCoroutine(async () =>
+        {
+            tokenProvider.OnGetToken = () => throw new CorruptedAccountDataException("account", new Exception("broken"));
+            var corrupted = await client.ReadAsync(1).ToResult();
+
+            tokenProvider.OnGetToken = () => throw new AccountSaveFailedException(new Exception("full"));
+            var saveFailed = await client.ReadAsync(1).ToResult();
+
+            Assert.That(corrupted.ErrorCode, Is.EqualTo(ReservedErrors.AccountDataCorrupted));
+            Assert.That(saveFailed.ErrorCode, Is.EqualTo(ReservedErrors.AccountSaveFailed));
+            Assert.That(errorHandler.Errors, Is.Empty);
+        });
+
+        /// <summary>
+        /// FakeRpcErrors.ApiFailureResult で作った失敗は、ToResult が失敗の結果にする。
+        /// </summary>
+        [UnityTest]
+        [Description("FakeRpcErrors.ApiFailureResult で作った失敗は、ToResult が失敗の結果にする")]
+        public IEnumerator ApiFailureResultBecomesFailedResult() => UniTask.ToCoroutine(async () =>
+        {
+            var result = await FakeRpcErrors.ApiFailureResult<string>(TestErrors.NotEnough, "not enough").ToResult();
+
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.ErrorCode, Is.EqualTo(TestErrors.NotEnough));
+            Assert.That(result.ErrorMessage, Is.EqualTo("not enough"));
+        });
+
+        /// <summary>
+        /// 値型のレスポンスの RPC は、反映処理があっても動く。
+        /// </summary>
+        [UnityTest]
+        [Description("値型のレスポンスの RPC は、反映処理があっても動く")]
+        public IEnumerator ValueTypeResponseWorksWithApplier() => UniTask.ToCoroutine(async () =>
+        {
+            var applier = new RecordingResponseApplier();
+            var withApplier = CreateBuilder(new ApiCoreOptions()).WithCommonResponseApplier(applier).Build().CreateClient<ITestService>();
+            invoker.Handler = call => Task.FromResult(FakeResult.Success(MessagePackSerializer.Serialize(5, TestClients.SerializerOptions)));
+
+            var result = await withApplier.CountAsync().ToResult();
+
+            Assert.That(result.Value, Is.EqualTo(5));
+            Assert.That(applier.Called, Is.False);
+        });
+
+        private ApiCoreBuilder CreateBuilder(ApiCoreOptions options)
+        {
+            return ApiCore.CreateBuilder(
+                invoker,
+                TestClients.SerializerProvider,
+                TestClients.ClientFactoryProvider,
+                options,
+                tokenProvider,
+                new ErrorPolicyProvider(new[] { new ErrorDefinition(TestErrors.NotEnough, ErrorAction.Stay) }),
+                errorHandler);
         }
 
         private static string MethodOf(FakeCall call)
@@ -406,32 +663,31 @@ namespace VolTech.Client.Tests.EditMode
             public static ErrorCode NotEnough => new ErrorCode("test", "NOT_ENOUGH");
         }
 
-        // アプリが書くラッパーの見本
-        private sealed class TestApi : ApiServiceBase<ITestService>
+        private sealed class RecordingActivityHandler : IApiActivityHandler
         {
-            public TestApi(ApiCore core, ITestService client)
-                : base(core, client)
+            public int Started { get; private set; }
+
+            public int Ended { get; private set; }
+
+            public void OnActivityStarted()
             {
+                Started++;
             }
 
-            public UniTask<ApiResult<string>> WriteAsync(string value, IEnumerable<ErrorCode> handledCodes = null)
+            public void OnActivityEnded()
             {
-                return InvokeAsync(nameof(ITestService.WriteAsync), value, static (client, request) => client.WriteAsync(request), handledCodes);
+                Ended++;
             }
+        }
 
-            public UniTask<ApiResult<string>> ReadAsync(int id)
-            {
-                return InvokeAsync(nameof(ITestService.ReadAsync), id, static (client, request) => client.ReadAsync(request));
-            }
+        private sealed class RecordingResponseApplier : ICommonResponseApplier<string>
+        {
+            public bool Called { get; private set; }
 
-            public UniTask<ApiResult<string>> PublicAsync(string value)
+            public UniTask ApplyAsync(string common)
             {
-                return InvokeAsync(nameof(ITestService.PublicAsync), value, static (client, request) => client.PublicAsync(request));
-            }
-
-            public UniTask<ApiResult<string>> CallUnknown()
-            {
-                return InvokeAsync("Unknown", 0, static (client, request) => client.ReadAsync(request));
+                Called = true;
+                return UniTask.CompletedTask;
             }
         }
 
@@ -443,8 +699,12 @@ namespace VolTech.Client.Tests.EditMode
 
             public List<string> Invalidated { get; } = new();
 
+            // トークンの取得の途中で動かす処理
+            public Action OnGetToken { get; set; }
+
             public UniTask<string> GetTokenAsync()
             {
+                OnGetToken?.Invoke();
                 if (current == null)
                 {
                     issued++;

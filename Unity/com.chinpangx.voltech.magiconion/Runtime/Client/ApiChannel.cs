@@ -9,7 +9,7 @@ namespace VolTech.Client.Unity
     /// YetAnotherHttpHandler(HTTP/2)で通信する GrpcChannel を作る。チャンネルは1つを使い回す。
     /// </summary>
     /// <remarks>
-    /// MagicOnionClient.Create にはチャンネルか、CreateCallInvoker で作った CallInvoker を渡す。
+    /// ApiCore.CreateBuilder と、IDeviceService の MagicOnionClient.Create には、CreateCallInvoker で作った CallInvoker を渡す。
     /// </remarks>
     public static class ApiChannel
     {
@@ -35,7 +35,7 @@ namespace VolTech.Client.Unity
         }
 
         /// <summary>
-        /// チャンネルで呼ぶ CallInvoker を作る。MagicOnionClient.Create に渡す。
+        /// チャンネルで呼ぶ CallInvoker を作る。ApiCore.CreateBuilder に渡す。
         /// </summary>
         /// <remarks>
         /// VolTech-gRPC 版は、開発用のツール(gRPC Monitor)が足した Interceptor をここで付けていた。

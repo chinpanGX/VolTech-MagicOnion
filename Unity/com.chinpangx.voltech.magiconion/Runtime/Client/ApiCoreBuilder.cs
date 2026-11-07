@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
+using Grpc.Core;
+using MagicOnion.Client;
+using MagicOnion.Serialization;
 using VolTech.Server.Abstractions;
 
 namespace VolTech.Client
@@ -18,17 +21,26 @@ namespace VolTech.Client
         private readonly List<IApiActivityHandler> activityHandlers = new();
 
         internal ApiCoreBuilder(
+            CallInvoker callInvoker,
+            IMagicOnionSerializerProvider serializerProvider,
+            IMagicOnionClientFactoryProvider clientFactoryProvider,
             ApiCoreOptions options,
             ITokenProvider tokenProvider,
             IErrorPolicyProvider errorPolicy,
             ICommonErrorHandler errorHandler)
         {
+            CallInvoker = callInvoker ?? throw new ArgumentNullException(nameof(callInvoker));
+            SerializerProvider = serializerProvider ?? throw new ArgumentNullException(nameof(serializerProvider));
+            ClientFactoryProvider = clientFactoryProvider ?? throw new ArgumentNullException(nameof(clientFactoryProvider));
             Options = options ?? throw new ArgumentNullException(nameof(options));
             TokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
             ErrorPolicy = errorPolicy ?? throw new ArgumentNullException(nameof(errorPolicy));
             ErrorHandler = errorHandler ?? throw new ArgumentNullException(nameof(errorHandler));
         }
 
+        internal CallInvoker CallInvoker { get; }
+        internal IMagicOnionSerializerProvider SerializerProvider { get; }
+        internal IMagicOnionClientFactoryProvider ClientFactoryProvider { get; }
         internal ApiCoreOptions Options { get; }
         internal ITokenProvider TokenProvider { get; }
         internal IErrorPolicyProvider ErrorPolicy { get; }
