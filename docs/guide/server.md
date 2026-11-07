@@ -61,12 +61,12 @@ public async UnaryResult<DrawResult> DrawAsync(int count)
 - 業務エラーは `BusinessException(ErrorCode, message, metadata?)` を投げる。ステータスへの変換は基盤が行う
 - 読み取りだけの RPC は、共有インターフェースのメソッドに `[NoSideEffects]` を付ける。読み取り専用のトランザクションで動き、冪等性の対象から外れる
 - 認証の要らない RPC には `[SkipAuth]` を付ける。共有インターフェースに付けると、そのサービスのすべての RPC が対象になる。メソッドに付けると、その RPC だけが対象になる。`[SkipAuth]` の RPC は冪等性の対象にもならないので、副作用のある `[SkipAuth]` の RPC(引き継ぎなど)は、何度呼んでも結果が同じになるように作る(通信のエラーで送り直されても、基盤は二重の実行を防がない)
-- RPC は共有インターフェースに直接書く。基底インターフェースから受け継いだメソッドには対応しない(属性が読まれず、クライアントのラッパーからも呼べない)
+- RPC は共有インターフェースに直接書く。基底インターフェースから受け継いだメソッドには対応しない(属性が読まれず、クライアントはコンパイルエラーになる)
 - 属性は共有インターフェースに付ける。実装クラスのメソッドに付けてもコンパイルは通るが、何も起きない(エラーにもならない。効くのは共有インターフェースに付けた属性だけ)。クラスに付けるとコンパイルエラーになる
 - Dapper を使うときは、`tx.Connection` と `tx.Transaction` を渡す
 - ゲームログは、数量の変化を `GameLog.Quantity(kind, delta, after, reason)`、それ以外を `GameLog.Event(kind, reason)` で作り、`Target(id)`・`Field(name, value)` で足す
 
-共有インターフェースは、`IService<T>` を継承し、Unity と共有するインターフェース。サーバーのサービスのクラスは、`ServiceBase<T>` の `T` にこれを渡す。クライアントのラッパー(`ApiServiceBase<TService>`)にも同じものを渡す。
+共有インターフェースは、`IService<T>` を継承し、Unity と共有するインターフェース。サーバーのサービスのクラスは、`ServiceBase<T>` の `T` にこれを渡す。クライアントは同じものを直接呼ぶ。
 
 ```csharp
 // 共有コード(サーバーと Unity の両方で読み込む)
@@ -120,6 +120,8 @@ tx.GetCollector<AppCollector>().UpsertCard(card);
 ```
 
 - ハンドラーは `Common` を自分で入れない。`RunAsync` が本体の後に `BuildAsync` を呼んで入れ、冪等性のためにレスポンスごと保存する。同じ `x-request-id` の再送には同じ `Common` が返る
+- `IApiResponse<>` のレスポンスは `RunAsync` の本体から返す。`RunAsync` の外で作ったり、`RunAsync` を通さなかったりすると、`Common` が詰まらないので基盤が `INTERNAL` にする。検出した時点で処理はコミット済み
+- `RunAsync` は 1 回の RPC で 1 回だけ呼ぶ
 - 本体が失敗したら、コレクターの中身は捨てられる
 - `IApiResponse<>` を実装したレスポンスなのに `AddCommonResponse` を呼んでいない、または `TCommon` が違うと `INTERNAL` になる
 - 使わないレスポンスには `IApiResponse<>` を実装しない(実装すると、クライアントの反映処理が要る)

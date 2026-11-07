@@ -3,8 +3,12 @@
     <Project Path="src/VolTech.Server.Abstractions/VolTech.Server.Abstractions.csproj" />
     <Project Path="src/VolTech.Server/VolTech.Server.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/VolTech.Sandbox.Server/VolTech.Sandbox.Server.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VolTech.Server.Abstractions.Tests/VolTech.Server.Abstractions.Tests.csproj" />
     <Project Path="tests/VolTech.Server.Tests/VolTech.Server.Tests.csproj" />
+    <Project Path="tests/VolTech.E2E.Server/VolTech.E2E.Server.csproj" />
   </Folder>
 </Solution>

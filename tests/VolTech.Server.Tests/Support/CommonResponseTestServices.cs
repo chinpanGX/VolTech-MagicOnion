@@ -124,6 +124,12 @@ namespace VolTech.Server.Tests.Support
         /// <summary>ジェムを足して記録してから、業務エラーを投げる。</summary>
         UnaryResult<GemsResult> AddGemsThenFailAsync(int amount);
 
+        /// <summary>RunAsync の外でレスポンスを作る。Common が詰まらない形。</summary>
+        UnaryResult<GemsResult> WrapOutsideRunAsync(int amount);
+
+        /// <summary>RunAsync を通さずにレスポンスを返す。Common が詰まらない形。</summary>
+        UnaryResult<GemsResult> WithoutRunAsync();
+
         /// <summary>何も記録しない。Common は null のはず。</summary>
         UnaryResult<GemsResult> NoChangeAsync();
 
@@ -168,6 +174,17 @@ namespace VolTech.Server.Tests.Support
                 tx.GetCollector<TestCollector>().SetGems(after);
                 throw new BusinessException(TestErrors.NotEnoughGems, "fail after collect");
             });
+        }
+
+        public async UnaryResult<GemsResult> WrapOutsideRunAsync(int amount)
+        {
+            var after = await transactions.RunAsync(Context, tx => AddAsync(tx, amount));
+            return new GemsResult { Amount = after };
+        }
+
+        public UnaryResult<GemsResult> WithoutRunAsync()
+        {
+            return UnaryResult.FromResult(new GemsResult());
         }
 
         public async UnaryResult<GemsResult> NoChangeAsync()

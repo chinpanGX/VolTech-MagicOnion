@@ -1,4 +1,5 @@
 using System;
+using VolTech.Server.Abstractions;
 
 namespace VolTech.Client
 {
@@ -15,8 +16,14 @@ namespace VolTech.Client
             Error = error;
         }
 
-        /// <summary>成功したか。</summary>
-        public bool IsSuccess => Error == null;
+        /// <summary>失敗したか。</summary>
+        public bool IsError => Error != null;
+
+        /// <summary>失敗したときのエラーコード。成功なら null。</summary>
+        public ErrorCode? ErrorCode => Error?.Code;
+
+        /// <summary>失敗したときのログ用のメッセージ。ユーザーには見せない。成功なら null。</summary>
+        public string ErrorMessage => Error?.Message;
 
         /// <summary>失敗したときのエラー。成功なら null。</summary>
         public ApiError Error { get; }
@@ -28,7 +35,7 @@ namespace VolTech.Client
         {
             get
             {
-                if (!IsSuccess)
+                if (IsError)
                 {
                     throw new InvalidOperationException($"失敗した結果の Value を読んだ: {Error}");
                 }

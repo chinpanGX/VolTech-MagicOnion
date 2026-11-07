@@ -2,36 +2,43 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Grpc.Core;
 using MagicOnion;
+using MagicOnion.Client;
+using MagicOnion.Serialization;
 using VolTech.Server.Abstractions;
 
 namespace VolTech.Client
 {
     /// <summary>
-    /// API の呼び出しの共通処理。トークンとヘッダーの付与、順番待ち、再認証、エラーの変換とハンドラーの呼び出し、
+    /// API の呼び出しの共通処理。CreateClient で作ったクライアントの呼び出しが、IClientFilter から届く。トークンの取得、順番待ち、再認証、エラーの変換とハンドラーの呼び出し、
     /// サーバー時刻の同期とゲーム内の日付の保持、進行中の呼び出しの通知を行う。
     /// </summary>
     /// <remarks>
-    /// 処理の流れ: InvokeAsync(進行中の通知) → SendInQueueAsync(順番待ち) → SendWithRetryAsync(再認証・再送のループ) → SendOnceAsync(1回の送信)。
-    /// 成功したら CompleteAsync でレスポンスヘッダーと共通レスポンス項目(player_diff → バッジ → 通知)を反映し、
+    /// 処理の流れ: SendAsync(進行中の通知) → SendInQueueAsync(順番待ち) → SendWithRetryAsync(再認証・再送のループ) → SendOnceAsync(1回の送信)。
+    /// ヘッダー・締め切り・キャンセルは ApiCallInvoker が試行ごとに付ける。
+    /// 成功したら CompleteAsync でレスポンスヘッダーと共通レスポンス項目を反映し、
     /// 失敗したら HandleErrorAsync でエラーハンドラーに渡す。
     /// エラーハンドラーを呼ぶ間(エラーハンドラーの順番待ちを含む)は、その呼び出しの分を進行中から外し、Retry で送り直すときに戻す。
     /// エラーハンドラーがタイトル・ホームに戻ると決めたら、先にセッションを終わらせ(古い通信を止め)、
     /// 順番待ちを解放してから画面を遷移させる。遷移先の画面は、遷移の途中からでも新しいセッションで API を呼べる。
+    /// 失敗は、これらの処理を済ませてから ApiException で投げる。アプリは ToResult で受け取る。
     /// </remarks>
     public sealed class ApiCore
     {
-        private readonly ApiCoreOptions options;
+        private readonly ApiCallInvoker callInvoker;
+        private readonly IMagicOnionSerializerProvider serializerProvider;
+        private readonly IMagicOnionClientFactoryProvider clientFactoryProvider;
         private readonly ITokenProvider tokenProvider;
         private readonly IErrorPolicyProvider errorPolicy;
         private readonly ICommonErrorHandler errorHandler;
         private readonly IErrorNavigator navigator;
         private readonly IReadOnlyList<IApiActivityHandler> activityHandlers;
 
-        // 共通レスポンス項目の反映処理。反映する順(player_diff → バッジ → 通知)に、渡されたものだけを持つ
-        private readonly IReadOnlyList<CommonApplier> commonAppliers;
+        // 共通レスポンス項目の反映処理。null なら反映しない
+        private readonly Func<object, UniTask> applyCommonResponse;
 
         // null ならログを出さない。?. で呼ぶので、ログの文字列も作らない
         private readonly IApiLogger logger;
@@ -63,7 +70,9 @@ namespace VolTech.Client
         // ApiCoreBuilder.Build から作る
         internal ApiCore(ApiCoreBuilder builder)
         {
-            options = builder.Options;
+            callInvoker = new ApiCallInvoker(builder.CallInvoker, builder.Options);
+            serializerProvider = builder.SerializerProvider;
+            clientFactoryProvider = builder.ClientFactoryProvider;
             tokenProvider = builder.TokenProvider;
             errorPolicy = builder.ErrorPolicy;
             errorHandler = builder.ErrorHandler;
@@ -72,25 +81,44 @@ namespace VolTech.Client
             navigator = builder.Navigator;
             // ビルダーを使い回して足されても変わらないように写す
             activityHandlers = builder.ActivityHandlers.ToArray();
-            commonAppliers = builder.CommonAppliers().ToArray();
+            applyCommonResponse = builder.ApplyCommonResponse;
         }
 
         /// <summary>
         /// ApiCore を組み立てるビルダーを作る。任意の部品を With・Add で渡し、Build で ApiCore を作る。
         /// </summary>
+        /// <param name="callInvoker">通信に使う CallInvoker。ApiChannel.CreateCallInvoker で作る。</param>
+        /// <param name="serializerProvider">アプリの生成物の Resolver を使うシリアライザー。</param>
+        /// <param name="clientFactoryProvider">[MagicOnionClientGeneration] が作った ClientFactoryProvider。</param>
         /// <param name="options">締め切りやアプリのバージョンなど、すべての呼び出しに使う設定。</param>
         /// <param name="tokenProvider">リクエストに付けるアクセストークンを渡す。UNAUTHENTICATED で弾かれたら、捨てて発行し直させる。</param>
         /// <param name="errorPolicy">業務エラーのコードを知っているかと、その既定の action を引く。知らないコードは UNKNOWN_ERROR として扱う。</param>
-        /// <param name="errorHandler">handledCodes で受け取らなかったエラーを処理する。ダイアログを出し、その後の動き(送り直す・タイトルに戻るなど)を返す。</param>
+        /// <param name="errorHandler">WithHandledCodes で指定しなかったエラーを処理する。ダイアログを出し、その後の動き(送り直す・タイトルに戻るなど)を返す。</param>
         /// <returns>ApiCore のビルダー。</returns>
         /// <exception cref="ArgumentNullException">どれかの引数が null のとき。</exception>
         public static ApiCoreBuilder CreateBuilder(
+            CallInvoker callInvoker,
+            IMagicOnionSerializerProvider serializerProvider,
+            IMagicOnionClientFactoryProvider clientFactoryProvider,
             ApiCoreOptions options,
             ITokenProvider tokenProvider,
             IErrorPolicyProvider errorPolicy,
             ICommonErrorHandler errorHandler)
         {
-            return new ApiCoreBuilder(options, tokenProvider, errorPolicy, errorHandler);
+            return new ApiCoreBuilder(callInvoker, serializerProvider, clientFactoryProvider, options, tokenProvider, errorPolicy, errorHandler);
+        }
+
+        /// <summary>
+        /// 共有インターフェースのクライアントを作る。アプリはこれを直接呼び、ToResult で結果を受け取る。
+        /// </summary>
+        /// <typeparam name="T">共有インターフェース。[MagicOnionClientGeneration] の対象のアセンブリのもの。</typeparam>
+        /// <returns>基盤のフィルターを通るクライアント。</returns>
+        /// <exception cref="NotSupportedException">T のアセンブリが [MagicOnionClientGeneration] の対象でないとき。</exception>
+        public T CreateClient<T>()
+            where T : IService<T>
+        {
+            var filter = new ApiCallFilter(this, RpcSettings.CreateAll(typeof(T)));
+            return MagicOnionClient.Create<T>(callInvoker, serializerProvider, new IClientFilter[] { filter }, clientFactoryProvider);
         }
 
         /// <summary>
@@ -114,36 +142,30 @@ namespace VolTech.Client
         }
 
         /// <summary>
-        /// RPC を呼ぶ。失敗したときはエラーハンドラーの処理を済ませてから、失敗の結果を返す。
+        /// RPC を呼ぶ。失敗したときはエラーハンドラーの処理を済ませてから、ApiException を投げる。ApiCallFilter から呼ばれる。
         /// </summary>
-        /// <remarks>
-        /// アプリのラッパーが、基底クラスの ApiServiceBase.InvokeAsync を通して呼ぶ。
-        /// </remarks>
         /// <param name="settings">RPC ごとの設定。</param>
-        /// <param name="client">MagicOnion のクライアント。呼ぶたびに WithOptions でヘッダーと締め切りを付けてから call に渡す。</param>
-        /// <param name="request">RPC の引数。引数が複数ならタプルにまとめる。</param>
+        /// <param name="context">フィルターに届いた呼び出し。</param>
+        /// <param name="next">送る処理。再送では複数回呼ぶ。</param>
         /// <param name="handledCodes">呼び出し側が自分で処理するエラーコード。ダイアログを出さずに失敗として返る。</param>
-        /// <param name="call">RPC を呼ぶ処理。キャプチャしない static ラムダで渡す。</param>
         /// <param name="notifyActivity">
         /// 進行中の呼び出しとしてアクティビティのハンドラーに知らせるか。画面を止めずに裏で呼ぶものは false にする。
         /// </param>
-        internal async UniTask<ApiResult<TResponse>> InvokeAsync<TClient, TRequest, TResponse>(
+        internal async ValueTask<ResponseContext> SendAsync(
             RpcSettings settings,
-            TClient client,
-            TRequest request,
+            RequestContext context,
+            Func<RequestContext, ValueTask<ResponseContext>> next,
             IEnumerable<ErrorCode> handledCodes,
-            Func<TClient, TRequest, UnaryResult<TResponse>> call,
-            bool notifyActivity = true)
-            where TClient : IService<TClient>
+            bool notifyActivity)
         {
             // null なら知らせない。?. で呼ぶ
             var activity = notifyActivity ? new CallActivity(this) : null;
             activity?.Resume();
 
-            (ApiResult<TResponse> Result, ErrorDecision Decision) outcome;
+            SendOutput output;
             try
             {
-                outcome = await SendInQueueAsync(settings, client, request, handledCodes, call, activity);
+                output = await SendInQueueAsync(settings, context, next, handledCodes, activity);
             }
             finally
             {
@@ -153,19 +175,22 @@ namespace VolTech.Client
             }
 
             // 画面の遷移は、順番待ちを解放し、進行中を終わらせてから行う。遷移先の画面がすぐに API を呼んでも待たされない
-            await NavigateAsync(outcome.Decision);
-            return outcome.Result;
+            await NavigateAsync(output.Decision);
+            if (output.Error != null)
+            {
+                throw new ApiException(output.Error);
+            }
+
+            return output.Response;
         }
 
         // 冪等性の対象なら順番を待ってから送る。エラーハンドラーが決めた画面の遷移は、結果と一緒に返す
-        private async UniTask<(ApiResult<TResponse> Result, ErrorDecision Decision)> SendInQueueAsync<TClient, TRequest, TResponse>(
+        private async UniTask<SendOutput> SendInQueueAsync(
             RpcSettings settings,
-            TClient client,
-            TRequest request,
+            RequestContext context,
+            Func<RequestContext, ValueTask<ResponseContext>> next,
             IEnumerable<ErrorCode> handledCodes,
-            Func<TClient, TRequest, UnaryResult<TResponse>> call,
             CallActivity activity)
-            where TClient : IService<TClient>
         {
             // 世代を先に読む。BeginNewSession はキャンセルを入れ替えてから世代を進めるので、
             // 新しい世代を読んだなら、キャンセルも必ず新しいものになる
@@ -182,7 +207,7 @@ namespace VolTech.Client
                 {
                     // 順番を待っている間にタイトル・ホームに戻ったので、送らずに捨てる
                     logger?.Log($"[Api] {settings.MethodName} discarded");
-                    return (ApiResult<TResponse>.Failure(ApiError.Discarded()), ErrorDecision.Stay);
+                    return SendOutput.Failure(ApiError.Discarded(), ErrorDecision.Stay);
                 }
             }
 
@@ -191,10 +216,10 @@ namespace VolTech.Client
                 if (IsStale(epoch))
                 {
                     logger?.Log($"[Api] {settings.MethodName} discarded");
-                    return (ApiResult<TResponse>.Failure(ApiError.Discarded()), ErrorDecision.Stay);
+                    return SendOutput.Failure(ApiError.Discarded(), ErrorDecision.Stay);
                 }
 
-                return await SendWithRetryAsync(settings, client, request, handledCodes, call, epoch, cancellationToken, activity);
+                return await SendWithRetryAsync(settings, context, next, handledCodes, epoch, cancellationToken, activity);
             }
             finally
             {
@@ -208,30 +233,28 @@ namespace VolTech.Client
         // 成功するか、諦めるまで送る。送り直すのは次の2つのときだけ。
         // - UNAUTHENTICATED: トークンを取り直して1回だけ自動で送り直す
         // - エラーハンドラーが Retry を返した: 同じ RequestID で送り直す。エラーハンドラーの前に外した進行中を戻してから送る
-        // エラーハンドラーが決めた画面の遷移は、結果と一緒に返し、順番待ちを解放してから InvokeAsync が行う
-        private async UniTask<(ApiResult<TResponse> Result, ErrorDecision Decision)> SendWithRetryAsync<TClient, TRequest, TResponse>(
+        // エラーハンドラーが決めた画面の遷移は、結果と一緒に返し、順番待ちを解放してから SendAsync が行う
+        private async UniTask<SendOutput> SendWithRetryAsync(
             RpcSettings settings,
-            TClient client,
-            TRequest request,
+            RequestContext context,
+            Func<RequestContext, ValueTask<ResponseContext>> next,
             IEnumerable<ErrorCode> handledCodes,
-            Func<TClient, TRequest, UnaryResult<TResponse>> call,
             int epoch,
             CancellationToken cancellationToken,
             CallActivity activity)
-            where TClient : IService<TClient>
         {
             // 再送では同じ RequestID を使うので、ループの外で採番する
             var requestId = settings.IsIdempotencyTarget ? Guid.NewGuid().ToString("N") : null;
             var reauthenticated = false;
             while (true)
             {
-                var attempt = await SendOnceAsync(settings, client, request, call, requestId, canReauthenticate: !reauthenticated, cancellationToken);
+                var attempt = await SendOnceAsync(settings, context, next, requestId, canReauthenticate: !reauthenticated, cancellationToken);
 
                 // 通信中にセッションを終わらせていたら(キャンセルで止まったときも)、結果を使わずに捨てる
                 if (IsStale(epoch))
                 {
                     logger?.Log($"[Api] {settings.MethodName} discarded after response");
-                    return (ApiResult<TResponse>.Failure(ApiError.Discarded()), ErrorDecision.Stay);
+                    return SendOutput.Failure(ApiError.Discarded(), ErrorDecision.Stay);
                 }
 
                 if (attempt.Outcome == SendOutcome.Unauthenticated)
@@ -245,7 +268,7 @@ namespace VolTech.Client
 
                 if (attempt.Outcome == SendOutcome.Success)
                 {
-                    return await CompleteAsync(settings, attempt.Response, attempt.ResponseHeaders, epoch, activity);
+                    return await CompleteAsync(settings, context, attempt, epoch, activity);
                 }
 
                 // 取り直したトークンも弾かれた。残すと、エラーハンドラーの Retry やほかの RPC が同じトークンでまた弾かれる
@@ -259,7 +282,7 @@ namespace VolTech.Client
 
                 if (IsHandledByCaller(error, handledCodes))
                 {
-                    return (ApiResult<TResponse>.Failure(error), ErrorDecision.Stay);
+                    return SendOutput.Failure(error, ErrorDecision.Stay);
                 }
 
                 var decision = await HandleErrorAsync(error, epoch, activity);
@@ -269,7 +292,7 @@ namespace VolTech.Client
                     if (IsStale(epoch))
                     {
                         logger?.Log($"[Api] {settings.MethodName} discarded");
-                        return (ApiResult<TResponse>.Failure(ApiError.Discarded()), ErrorDecision.Stay);
+                        return SendOutput.Failure(ApiError.Discarded(), ErrorDecision.Stay);
                     }
 
                     activity?.Resume();
@@ -277,20 +300,18 @@ namespace VolTech.Client
                     continue;
                 }
 
-                return (ApiResult<TResponse>.Failure(error), decision);
+                return SendOutput.Failure(error, decision);
             }
         }
 
         // 1回だけ送る。例外は投げず、成功・再認証が要る・エラーのどれかを返す
-        private async UniTask<SendAttempt<TResponse>> SendOnceAsync<TClient, TRequest, TResponse>(
+        private async UniTask<SendAttempt> SendOnceAsync(
             RpcSettings settings,
-            TClient client,
-            TRequest request,
-            Func<TClient, TRequest, UnaryResult<TResponse>> call,
+            RequestContext context,
+            Func<RequestContext, ValueTask<ResponseContext>> next,
             string requestId,
             bool canReauthenticate,
             CancellationToken cancellationToken)
-            where TClient : IService<TClient>
         {
             string token = null;
             try
@@ -300,32 +321,28 @@ namespace VolTech.Client
                     token = await tokenProvider.GetTokenAsync();
                 }
 
-                var callOptions = new CallOptions(
-                    CreateHeaders(token, requestId),
-                    DateTime.UtcNow.Add(options.Deadline),
-                    cancellationToken);
-                // Task は AsUniTask() を通さずにそのまま await する(本体の決まり)
-                var rpc = call(client.WithOptions(callOptions), request);
-                var response = await rpc.ResponseAsync;
-                var responseHeaders = await rpc.ResponseHeadersAsync;
+                var callContext = new ApiCallContext(token, requestId, Volatile.Read(ref gameDate), cancellationToken);
+                // ValueTask は AsUniTask() を通さずにそのまま await する(本体の決まり)
+                var response = await callInvoker.Send(callContext, context, next);
+                var responseHeaders = await response.ResponseHeadersAsync;
                 // 通信のログは、応答を受け取ったときに1行のまとめだけを出す
                 logger?.Log($"[Api] {settings.MethodName} OK");
-                return SendAttempt<TResponse>.Success(response, responseHeaders);
+                return SendAttempt.Success(response, responseHeaders, callContext.ReadResponse);
             }
             catch (RpcException exception) when (
-                exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth && canReauthenticate)
+                exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth && canReauthenticate && token != null)
             {
-                return SendAttempt<TResponse>.Unauthenticated(token);
+                return SendAttempt.Unauthenticated(token);
             }
             catch (RpcException exception) when (exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth)
             {
                 // 弾かれたトークンは、古いセッションの呼び出しでないかを確かめてから呼び出し側(SendWithRetryAsync)が捨てる。
                 // トークンを取る途中で弾かれたときは token が null なので、何も捨てない
-                return SendAttempt<TResponse>.Failure(ConvertError(settings, exception), token);
+                return SendAttempt.Failure(ConvertError(settings, exception), token);
             }
             catch (Exception exception)
             {
-                return SendAttempt<TResponse>.Failure(ConvertError(settings, exception));
+                return SendAttempt.Failure(ConvertError(settings, exception));
             }
         }
 
@@ -351,10 +368,10 @@ namespace VolTech.Client
         }
 
         // 成功したレスポンスの後始末。古いセッションのものでなければ、共通レスポンス項目を反映して返す
-        private async UniTask<(ApiResult<TResponse> Result, ErrorDecision Decision)> CompleteAsync<TResponse>(
+        private async UniTask<SendOutput> CompleteAsync(
             RpcSettings settings,
-            TResponse response,
-            Metadata responseHeaders,
+            RequestContext context,
+            SendAttempt attempt,
             int epoch,
             CallActivity activity)
         {
@@ -363,50 +380,42 @@ namespace VolTech.Client
             if (IsStale(epoch))
             {
                 logger?.Log($"[Api] {settings.MethodName} discarded after response");
-                return (ApiResult<TResponse>.Failure(ApiError.Discarded()), ErrorDecision.Stay);
+                return SendOutput.Failure(ApiError.Discarded(), ErrorDecision.Stay);
             }
 
-            ApplyResponseHeaders(responseHeaders);
+            ApplyResponseHeaders(attempt.ResponseHeaders);
 
             // 反映処理の例外は、通信のエラーと違って送り直さないので、送信とは別に扱う
-            var (applyError, decision) = await ApplyCommonFieldsAsync(settings, response, epoch, activity);
+            var (applyError, decision) = await ApplyCommonFieldsAsync(settings, context, attempt.ReadResponse, epoch, activity);
             return applyError == null
-                ? (ApiResult<TResponse>.Success(response), ErrorDecision.Stay)
-                : (ApiResult<TResponse>.Failure(applyError), decision);
+                ? SendOutput.Success(attempt.Response)
+                : SendOutput.Failure(applyError, decision);
         }
 
-        // 共通レスポンス項目を player_diff → バッジ → 通知の順に反映する。順番待ちの中で行うので、次の API が送られる時点で
-        // 必ず反映が終わっている。反映処理で例外が起きたら、残りは反映せずに CLIENT_ERROR として共通エラーハンドラーに渡し、
-        // そのエラーとハンドラーが決めた動きを返す
-        private async UniTask<(ApiError Error, ErrorDecision Decision)> ApplyCommonFieldsAsync<TResponse>(
+        // 共通レスポンス項目を反映する。順番待ちの中で行うので、次の API が送られる時点で必ず反映が終わっている。
+        // 反映処理で例外が起きたら CLIENT_ERROR として共通エラーハンドラーに渡し、そのエラーとハンドラーが決めた動きを返す
+        private async UniTask<(ApiError Error, ErrorDecision Decision)> ApplyCommonFieldsAsync(
             RpcSettings settings,
-            TResponse response,
+            RequestContext context,
+            Func<object> readResponse,
             int epoch,
             CallActivity activity)
         {
-            // 反映処理の TCommon は Build で 1 つに揃えてあるので、どれで取り出しても同じ
-            var common = commonAppliers.Count == 0 ? null : commonAppliers[0].Extract(response);
-            if (common == null)
+            if (applyCommonResponse == null)
             {
                 return (null, ErrorDecision.Stay);
             }
 
-            var applying = commonAppliers[0].Name;
             try
             {
-                foreach (var applier in commonAppliers)
-                {
-                    applying = applier.Name;
-                    await applier.ApplyAsync(common);
-                }
-
+                await applyCommonResponse(readResponse());
                 return (null, ErrorDecision.Stay);
             }
             catch (Exception exception)
             {
                 // 反映処理の例外はアプリの実装のバグ。サーバーの処理は成功しているので送り直さない。
                 // タイトルに戻ってサインインで全件を取り直し、サーバーとの食い違いを解消してもらう
-                logger?.LogException($"[Api] {settings.MethodName} failed to apply {applying} of {typeof(TResponse).Name}", exception);
+                logger?.LogException($"[Api] {settings.MethodName} failed to apply the common response of {context.ResponseType.Name}", exception);
                 var error = ErrorConverter.FromClientException(exception, errorPolicy);
                 var decision = await HandleErrorAsync(error, epoch, activity);
                 return (error, decision);
@@ -423,31 +432,6 @@ namespace VolTech.Client
             }
 
             return !ErrorConverter.IsReserved(error.Code) && handledCodes != null && handledCodes.Contains(error.Code);
-        }
-
-        private Metadata CreateHeaders(string token, string requestId)
-        {
-            var headers = new Metadata();
-            if (token != null)
-            {
-                headers.Add(ApiHeaders.Authorization, $"Bearer {token}");
-            }
-
-            if (requestId != null)
-            {
-                headers.Add(ApiHeaders.RequestId, requestId);
-            }
-
-            options.AppVersion?.AddHeadersTo(headers);
-
-            // サインアップ・サインインなど、セッションの最初の呼び出しでは日付をまだ持っていないので付けない
-            var date = Volatile.Read(ref gameDate);
-            if (date != null)
-            {
-                headers.Add(ApiHeaders.GameDate, date);
-            }
-
-            return headers;
         }
 
         // サーバー時刻を記録し、ゲーム内の日付をまだ持っていなければ覚える
@@ -493,7 +477,7 @@ namespace VolTech.Client
                 }
 
                 // 画面を遷移する前に、セッションを終わらせる(古い通信を止め、次のエラーのダイアログも出さない)。
-                // 遷移は、順番待ちを解放してから InvokeAsync が行う
+                // 遷移は、順番待ちを解放してから SendAsync が行う
                 switch (decision)
                 {
                     case ErrorDecision.ReturnToHome:
@@ -652,13 +636,20 @@ namespace VolTech.Client
         }
 
         // 1回の送信の結果。SendOnceAsync の中だけで使う
-        private readonly struct SendAttempt<TResponse>
+        private readonly struct SendAttempt
         {
-            private SendAttempt(SendOutcome outcome, TResponse response, Metadata responseHeaders, string token, ApiError error)
+            private SendAttempt(
+                SendOutcome outcome,
+                ResponseContext response,
+                Metadata responseHeaders,
+                Func<object> readResponse,
+                string token,
+                ApiError error)
             {
                 Outcome = outcome;
                 Response = response;
                 ResponseHeaders = responseHeaders;
+                ReadResponse = readResponse;
                 Token = token;
                 Error = error;
             }
@@ -666,10 +657,13 @@ namespace VolTech.Client
             public SendOutcome Outcome { get; }
 
             // Success のときのレスポンス
-            public TResponse Response { get; }
+            public ResponseContext Response { get; }
 
             // Success のときのレスポンスヘッダー
             public Metadata ResponseHeaders { get; }
+
+            // Success のときにレスポンスを読む処理
+            public Func<object> ReadResponse { get; }
 
             // Unauthenticated と、再認証できずに UNAUTHENTICATED で失敗したときの、サーバーに弾かれたトークン
             public string Token { get; }
@@ -677,19 +671,46 @@ namespace VolTech.Client
             // Failure のときのエラー
             public ApiError Error { get; }
 
-            public static SendAttempt<TResponse> Success(TResponse response, Metadata responseHeaders)
+            public static SendAttempt Success(ResponseContext response, Metadata responseHeaders, Func<object> readResponse)
             {
-                return new SendAttempt<TResponse>(SendOutcome.Success, response, responseHeaders, null, null);
+                return new SendAttempt(SendOutcome.Success, response, responseHeaders, readResponse, null, null);
             }
 
-            public static SendAttempt<TResponse> Unauthenticated(string token)
+            public static SendAttempt Unauthenticated(string token)
             {
-                return new SendAttempt<TResponse>(SendOutcome.Unauthenticated, default, null, token, null);
+                return new SendAttempt(SendOutcome.Unauthenticated, null, null, null, token, null);
             }
 
-            public static SendAttempt<TResponse> Failure(ApiError error, string rejectedToken = null)
+            public static SendAttempt Failure(ApiError error, string rejectedToken = null)
             {
-                return new SendAttempt<TResponse>(SendOutcome.Failure, default, null, rejectedToken, error);
+                return new SendAttempt(SendOutcome.Failure, null, null, null, rejectedToken, error);
+            }
+        }
+
+        // 順番待ちを抜けた後の結果。エラーハンドラーが決めた画面の遷移も持つ
+        private readonly struct SendOutput
+        {
+            private SendOutput(ResponseContext response, ApiError error, ErrorDecision decision)
+            {
+                Response = response;
+                Error = error;
+                Decision = decision;
+            }
+
+            public ResponseContext Response { get; }
+
+            public ApiError Error { get; }
+
+            public ErrorDecision Decision { get; }
+
+            public static SendOutput Success(ResponseContext response)
+            {
+                return new SendOutput(response, null, ErrorDecision.Stay);
+            }
+
+            public static SendOutput Failure(ApiError error, ErrorDecision decision)
+            {
+                return new SendOutput(null, error, decision);
             }
         }
     }

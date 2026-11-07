@@ -10,7 +10,7 @@ namespace VolTech.Client
     /// 経過時間は、端末の時刻の変更に影響されない時計(既定は Stopwatch)で測る。
     /// Unity の realtimeSinceStartup はメインスレッドからしか読めず、通信の後の処理がメインスレッドで動くとは限らないので使わない。
     /// ただし iOS・Android の Stopwatch は端末のスリープ中に止まるので、スリープの後は実際より遅れる。
-    /// アプリが前面に戻ったら ServerClockResetter が Reset を呼び、次に受け取るサーバー時刻で合わせ直す。
+    /// Reset を呼ぶと、次に受け取るサーバー時刻で合わせ直す。アプリが前面に戻ったときに呼ぶ。
     /// </remarks>
     public sealed class ServerClock : IServerClock
     {

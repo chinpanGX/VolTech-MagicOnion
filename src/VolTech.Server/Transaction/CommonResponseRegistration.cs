@@ -38,7 +38,8 @@ namespace VolTech.Server.Transaction
                 : $"{response.GetType().Name} の IApiResponse<> の型引数が、AddCommonResponse で登録した型と違う。");
         }
 
-        private static bool ImplementsApiResponse(Type type)
+        /// <summary>型が何かの IApiResponse&lt;&gt; を実装しているか。型ごとに覚える。</summary>
+        public static bool ImplementsApiResponse(Type type)
         {
             return implementsApiResponse.GetOrAdd(type, static t => t.GetInterfaces().Any(
                 i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IApiResponse<>)));

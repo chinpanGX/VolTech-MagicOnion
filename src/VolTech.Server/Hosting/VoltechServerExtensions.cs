@@ -25,6 +25,7 @@ namespace VolTech.Server.Hosting
             public const int ServerTime = int.MinValue + 1;
             public const int Auth = int.MinValue + 2;
             public const int DateChange = int.MinValue + 3;
+            public const int CommonResponseCheck = int.MinValue + 4;
         }
 
         /// <summary>
@@ -62,6 +63,7 @@ namespace VolTech.Server.Hosting
                 magicOnion.GlobalFilters.Add(new MagicOnionServiceFilterDescriptor(typeof(ServerTimeFilter), FilterOrder.ServerTime));
                 magicOnion.GlobalFilters.Add(new MagicOnionServiceFilterDescriptor(typeof(AuthFilter), FilterOrder.Auth));
                 magicOnion.GlobalFilters.Add(new MagicOnionServiceFilterDescriptor(typeof(DateChangeFilter), FilterOrder.DateChange));
+                magicOnion.GlobalFilters.Add(new MagicOnionServiceFilterDescriptor(typeof(CommonResponseCheckFilter), FilterOrder.CommonResponseCheck));
             });
         }
 

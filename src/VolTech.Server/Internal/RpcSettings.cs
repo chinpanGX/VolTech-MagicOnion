@@ -72,7 +72,7 @@ namespace VolTech.Server.Internal
             return null;
         }
 
-        // MagicOnion がサービスとして登録するのは ServiceBase<T> の T だけ(docs/design/server.md)
+        // MagicOnion がサービスとして登録するのは ServiceBase<T> の T だけ(docs/designs/implementation/server.md)
         private static Type? FindServiceInterface(Type serviceType)
         {
             for (var type = serviceType; type != null; type = type.BaseType)

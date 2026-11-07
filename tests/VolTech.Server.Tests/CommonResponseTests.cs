@@ -1,6 +1,7 @@
 using Grpc.Core;
 using MagicOnion.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using VolTech.Server.Hosting;
 using VolTech.Server.Tests.Support;
 
@@ -49,6 +50,59 @@ namespace VolTech.Server.Tests
             Assert.Equal(first.Runs, replayed.Runs);
             Assert.Equal(5, replayed.Common!.Gems);
             Assert.Equal(new[] { "added 5" }, replayed.Common.Notifications);
+        }
+
+        /// <summary>RunAsync の外で作ったレスポンスは Common が詰まっていないので、検査が INTERNAL にする。</summary>
+        [Fact]
+        public async Task ResponseMadeOutsideRunAsync_IsInternal()
+        {
+            await using var host = await TestHost.StartAsync(database.ConnectionString);
+            var token = await AuthTests.IssueTokenAsync(host);
+            var client = MagicOnionClient.Create<ICommonTestService>(host.Channel);
+
+            var exception = await Assert.ThrowsAsync<RpcException>(
+                async () => await client.WithHeaders(AuthTests.Bearer(token, "common-o")).WrapOutsideRunAsync(1));
+
+            Assert.Equal(StatusCode.Internal, exception.StatusCode);
+        }
+
+        /// <summary>RunAsync を通らないレスポンスも、検査が INTERNAL にする。</summary>
+        [Fact]
+        public async Task ResponseWithoutRunAsync_IsInternal()
+        {
+            await using var host = await TestHost.StartAsync(database.ConnectionString);
+            var token = await AuthTests.IssueTokenAsync(host);
+            var client = MagicOnionClient.Create<ICommonTestService>(host.Channel);
+
+            var exception = await Assert.ThrowsAsync<RpcException>(
+                async () => await client.WithHeaders(AuthTests.Bearer(token, "common-w")).WithoutRunAsync());
+
+            Assert.Equal(StatusCode.Internal, exception.StatusCode);
+        }
+
+        /// <summary>保存済みのレスポンスを読めない再送は INTERNAL になり、本体を呼ばない。</summary>
+        [Fact]
+        public async Task UnreadableSavedResponse_IsInternalAndDoesNotRunAgain()
+        {
+            await using var host = await TestHost.StartAsync(database.ConnectionString);
+            var token = await AuthTests.IssueTokenAsync(host);
+            var client = MagicOnionClient.Create<ICommonTestService>(host.Channel);
+            var first = await client.WithHeaders(AuthTests.Bearer(token, "common-u")).AddGemsAsync(3);
+            await using (var connection = new NpgsqlConnection(database.ConnectionString))
+            {
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand("UPDATE last_responses SET response = $1 WHERE request_id = 'common-u'", connection);
+                // 配列ではなく文字列の MessagePack。GemsResult として読めない
+                command.Parameters.AddWithValue(new byte[] { 0xA1, 0x61 });
+                await command.ExecuteNonQueryAsync();
+            }
+
+            var exception = await Assert.ThrowsAsync<RpcException>(
+                async () => await client.WithHeaders(AuthTests.Bearer(token, "common-u")).AddGemsAsync(3));
+
+            Assert.Equal(StatusCode.Internal, exception.StatusCode);
+            var next = await client.WithHeaders(AuthTests.Bearer(token, "common-v")).AddGemsAsync(0);
+            Assert.Equal(first.Amount, next.Amount);
         }
 
         [Fact]

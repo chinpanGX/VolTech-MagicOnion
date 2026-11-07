@@ -8,6 +8,8 @@
 | サーバー内部エラー | `INTERNAL` | `voltech` / `INTERNAL_ERROR`。詳細はログにだけ出す |
 | 認証エラー | `UNAUTHENTICATED` | なし |
 | `x-request-id` が無い・形が違う・別の RPC で使い回した | `INVALID_ARGUMENT` | なし |
+| デバイス登録の `secretKey` の形が違う | `INVALID_ARGUMENT` | なし |
+| 切断・締め切りで処理が止まった | `CANCELLED` | なし |
 
 - 運び方: `google.rpc.Status` の details に `ErrorInfo` を入れ、トレーラー `grpc-status-details-bin` で返す
 - `FAILED_PRECONDITION` の ErrorInfo の `metadata["action"]` に `ERROR_ACTION_STAY / RETRY / HOME / TITLE / UPDATE` を入れると、クライアントの既定の action を上書きできる。ほかのステータス(`INTERNAL` など)では上書きを読まない
@@ -42,9 +44,9 @@ action ごとの動き(共通エラーハンドラーの既定の実装 `Default
 | `ACCOUNT_DATA_CORRUPTED` | クライアントが作る | `STAY` |
 | `ACCOUNT_SAVE_FAILED` | クライアントが作る | `STAY` |
 
-- 予約エラーは、呼び出し側が `handledCodes`(呼び出し側が自分で処理するエラーコードの一覧。[クライアントのラッパー](../guide/client.md#ラッパー))に入れても、共通エラーハンドラーに渡す。画面ごとに扱いを変えないため
-- ただし `ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED`(端末のアカウント情報の読み書きの失敗)は、共通エラーハンドラーに渡さず、`handledCodes` に関係なくいつも呼び出し側に返す。共通エラーハンドラーも画面の遷移も呼ばれない。呼び出し側に返す `ApiError.Action` は `STAY` になる
-- すべての予約エラーに既定の action を決める。予約エラーを足すときは、この表と、クライアントの既定の action の一覧(`ErrorPolicyProvider` の中。[実装設計書のクライアント](../design/client.md))を一緒に直す。入れ忘れは `ErrorPolicyProviderTests` が見つける
+- 予約エラーは、呼び出し側が `WithHandledCodes`(呼び出し側が自分で処理するエラーコードの指定。[クライアントの呼び方](../guide/client.md#呼び方))で指定しても、共通エラーハンドラーに渡す。画面ごとに扱いを変えないため
+- ただし `ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED`(端末のアカウント情報の読み書きの失敗)は、共通エラーハンドラーに渡さず、`WithHandledCodes` の指定に関係なくいつも呼び出し側に返す。共通エラーハンドラーも画面の遷移も呼ばれない。呼び出し側に返す `ApiError.Action` は `STAY` になる
+- すべての予約エラーに既定の action を決める。予約エラーを足すときは、この表と、クライアントの既定の action の一覧(`ErrorPolicyProvider` の中。[実装設計書のクライアント](../designs/implementation/client.md))を一緒に直す。入れ忘れは `ErrorPolicyProviderTests` が見つける
 - アプリの業務エラーは、予約エラーの domain `voltech` を使えない。クライアントは `ErrorPolicyProvider` を作るときに `ArgumentException` で拒む。サーバーは確かめない
 
 ## エラーコードの置き場所
@@ -52,4 +54,4 @@ action ごとの動き(共通エラーハンドラーの既定の実装 `Default
 - 予約エラーは `Abstractions` に、アプリの業務エラーはアプリの共有コードに、C# の定数として置く
 - アプリのハンドラーは `BusinessException(ErrorCode, message, metadata?)` を投げるだけにする。ステータスへの変換は基盤が行う
 
-C# での作り方は [実装設計書のサーバー](../design/server.md#エラーの変換)。
+C# での作り方は [実装設計書のサーバー](../designs/implementation/server.md#エラーの変換)。

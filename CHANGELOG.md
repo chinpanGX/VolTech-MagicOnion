@@ -4,6 +4,11 @@
 
 ### 互換性が壊れる変更
 
+- Unity クライアント: `ApiServiceBase<TService>` を消した。アプリは `ApiCore.CreateClient<T>()` で作ったクライアントを直接呼び、`ToResult()` で結果を受け取る。`handledCodes`・`notifyActivity` の引数は `WithHandledCodes`・`WithoutActivity` になった
+- Unity クライアント: `ApiCore.CreateBuilder` の引数に `CallInvoker`・シリアライザー・`IMagicOnionClientFactoryProvider` を足した
+- Unity クライアント: `IPlayerDiffApplier<TCommon>`・`IBadgeApplier<TCommon>`・`INotificationApplier<TCommon>` を `ICommonResponseApplier<TCommon>` 1 つにまとめた。player_diff → バッジ → 通知の順はアプリが守る
+- Unity クライアント: `ApiResult<T>.IsSuccess` を `IsError` に変え、`ErrorCode`・`ErrorMessage` を足した
+- `VolTech.Server`: `IApiResponse<>` のレスポンスが `RunAsync` を通らずに返ると `INTERNAL` になる
 - サーバーの RPC ごとの設定は、共有インターフェースとそのメソッドの属性(`[SkipAuth]`・`[NoSideEffects]`)だけを読む。実装クラスと実装メソッドに付けた属性は読まなくなった。クライアントは実装クラスを知らないので、実装側の属性まで読むと、サーバーとクライアントで認証の要否や冪等性の対象が食い違うため
 - `SkipAuthAttribute` をクラスに付けられなくした(`AttributeUsage` を `Interface | Method` にした)。実装クラスに付けているとコンパイルエラーになる。共有インターフェースに付け直す
 - サーバーが属性を読む共有インターフェースを、サービスのクラスの `ServiceBase<T>` の `T` だけにした。実装クラスがほかに実装しているインターフェースの属性と、共有インターフェースが基底インターフェースから受け継いだメソッドの属性は読まなくなった
@@ -22,6 +27,8 @@
 
 ### Added
 
+- Unity クライアント: `ApiCore.CreateClient<T>()`・`ToResult()`・`WithHandledCodes`・`WithoutActivity`・`ApiException`・`FakeRpcErrors.ApiFailureResult<T>`
+- `VolTech.Server`: `CommonResponseCheckFilter`(`FilterOrder.CommonResponseCheck`)
 - 共通レスポンス項目(player_diff・バッジ・通知): レスポンスの型が `IApiResponse<TCommon>`(`Abstractions`)を実装し、`Common` に載せて返す。`TCommon` はアプリが決める 1 つの型
 - `VolTech.Server`: `ICommonResponseCollector<TCommon>`・`TxContext.GetCollector<TCollector>()`・`AddCommonResponse<TCommon, TCollector>()`。`ITransactions.RunAsync` が本体の成功後、保存の前に `Common` を詰める
 - Unity クライアント: `IPlayerDiffApplier<TCommon>`・`IBadgeApplier<TCommon>`・`INotificationApplier<TCommon>` と `ApiCoreBuilder.WithPlayerDiffApplier`・`WithBadgeApplier`・`WithNotificationApplier`。成功したレスポンスの `Common` を player_diff → バッジ → 通知の順に渡し、反映の例外は `CLIENT_ERROR` にする

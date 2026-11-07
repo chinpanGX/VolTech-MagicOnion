@@ -19,6 +19,10 @@
         "Google.Protobuf.dll",
         "Grpc.Core.Api.dll",
         "MagicOnion.Abstractions.dll",
+        "MagicOnion.Client.dll",
+        "MagicOnion.Shared.dll",
+        "MagicOnion.Serialization.MessagePack.dll",
+        "MessagePack.dll",
         "MessagePack.Annotations.dll"
     ],
     "autoReferenced": false,
