@@ -1,6 +1,6 @@
 # 仕様書
 
-基盤が何をするか(振る舞いと、クライアントとの取り決め)を決める。MagicOnion や C# でどう作るかは [実装設計書](../design/index.md) に書く。
+基盤が何をするか(振る舞いと、クライアントとの取り決め)を決める。MagicOnion や C# でどう作るかは [実装設計書](../designs/implementation/index.md) に書く。
 
 Oct 23, 2026 · @Shota
 

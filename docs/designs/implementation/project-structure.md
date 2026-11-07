@@ -46,7 +46,7 @@ VolTech-MagicOnion/
 
 | ルール | 理由 |
 | --- | --- |
-| DB(Npgsql・DbUp)を参照するのは `Auth/` と `Transaction/` だけ。`VolTech.Server` のほかの型(今は `Status/`・`Logging/`・`Hosting/`・`Internal/`。フォルダーを足しても対象に入る)は参照しない | DB を使うのは端末の登録とトークン(`Auth/`)と、トランザクション・冪等性・ゲームログ・マイグレーション(`Transaction/`)。サーバー時刻と日付変更の判定は DB を使わない([リクエストの処理順](../spec/processing-order.md)) |
+| DB(Npgsql・DbUp)を参照するのは `Auth/` と `Transaction/` だけ。`VolTech.Server` のほかの型(今は `Status/`・`Logging/`・`Hosting/`・`Internal/`。フォルダーを足しても対象に入る)は参照しない | DB を使うのは端末の登録とトークン(`Auth/`)と、トランザクション・冪等性・ゲームログ・マイグレーション(`Transaction/`)。サーバー時刻と日付変更の判定は DB を使わない([リクエストの処理順](../../spec/processing-order.md)) |
 | `Internal/` は、ほかのフォルダー(`Auth/`・`Status/`・`Transaction/`・`Logging/`・`Hosting/`)に依存しない | フィルターどうしで共有する部品なので、使う側より下に置く |
 | `Abstractions` は、`VolTech.Server` のコードと、サーバー専用の依存(Npgsql・DbUp・MagicOnion.Server・ASP.NET Core)を参照しない | Unity と共有する(netstandard2.1) |
 
@@ -67,7 +67,7 @@ DB のルールのテストは、名前空間を並べず「`Auth/`・`Transacti
 
 ## アプリからの参照
 
-アプリのリポジトリには、基盤をサブモジュールとして置く。フォルダーの置き方と手順は [利用ガイドの導入](../guide/getting-started.md)。ここには、その形にした理由を書く。
+アプリのリポジトリには、基盤をサブモジュールとして置く。フォルダーの置き方と手順は [利用ガイドの導入](../../guide/getting-started.md)。ここには、その形にした理由を書く。
 
 - NuGet で配らず、プロジェクト参照と UPM のローカルパッケージで使う。ソースが手元にあるので、サーバーからも Unity からも基盤の定義へ飛べる
 - アプリの `shared/` も `Abstractions` と同じ仕組みにする。`.cs` の実体は UPM パッケージに置き、サーバー側は csproj から読み込む

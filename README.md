@@ -18,7 +18,7 @@ proto と Rust サーバーで同じ役割を果たす [VolTech-gRPC](https://gi
 ## ドキュメント
 
 - 使う人: [利用ガイド](docs/guide/index.md)。アプリへの導入、[使う版](docs/guide/getting-started.md#使う版)、[サーバーでの使い方](docs/guide/server.md)、[Unity クライアントでの使い方](docs/guide/client.md)
-- 作る人: [仕様書](docs/spec/index.md)と[実装設計書](docs/design/index.md)
+- 作る人: [仕様書](docs/spec/index.md)と[実装設計書](docs/designs/implementation/index.md)
 
 ## 開発
 

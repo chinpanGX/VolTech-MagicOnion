@@ -11,4 +11,4 @@
 - 対象は Unary のみ。StreamingHub は別に設計する
 - サーバーは HTTP/2 で待ち受ける。クライアント(YetAnotherHttpHandler)は HTTP/2 で接続する
 
-MagicOnion での作り方は [実装設計書のサーバー](../design/server.md#フィルター)。
+MagicOnion での作り方は [実装設計書のサーバー](../designs/implementation/server.md#フィルター)。

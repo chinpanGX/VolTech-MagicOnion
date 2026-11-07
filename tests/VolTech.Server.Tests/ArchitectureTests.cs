@@ -6,7 +6,7 @@ using VolTech.Server.Hosting;
 namespace VolTech.Server.Tests
 {
     /// <summary>
-    /// フォルダー(名前空間)の間の依存の向きを確かめる(docs/design/project-structure.md の「2 つに分ける理由」)。
+    /// フォルダー(名前空間)の間の依存の向きを確かめる(docs/designs/implementation/project-structure.md の「2 つに分ける理由」)。
     /// </summary>
     public class ArchitectureTests
     {

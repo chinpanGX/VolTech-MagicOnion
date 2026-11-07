@@ -96,7 +96,7 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 
 - **フィルターの手前での失敗**: リクエストのデシリアライズの失敗など、フィルターより前で起きた失敗は、アクセスログに出ない。
 - **Cloud SQL の接続数**: Cloud Run と Cloud SQL では、Npgsql の接続プールの上限にインスタンスの最大数を掛けた値が、Cloud SQL の接続上限を超えないようにする。これを基盤の推奨設定として書いておく。
-- **置き換えた節の明記**: 項目ごとの設計書には、置き換える `docs/spec/`・`docs/design/` の節を書く。
+- **置き換えた節の明記**: 項目ごとの設計書には、置き換える `docs/spec/`・`docs/designs/implementation/` の節を書く。
 
 ## Goals vs. Non-Goals
 

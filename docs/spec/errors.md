@@ -44,7 +44,7 @@ action ごとの動き(共通エラーハンドラーの既定の実装 `Default
 
 - 予約エラーは、呼び出し側が `handledCodes`(呼び出し側が自分で処理するエラーコードの一覧。[クライアントのラッパー](../guide/client.md#ラッパー))に入れても、共通エラーハンドラーに渡す。画面ごとに扱いを変えないため
 - ただし `ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED`(端末のアカウント情報の読み書きの失敗)は、共通エラーハンドラーに渡さず、`handledCodes` に関係なくいつも呼び出し側に返す。共通エラーハンドラーも画面の遷移も呼ばれない。呼び出し側に返す `ApiError.Action` は `STAY` になる
-- すべての予約エラーに既定の action を決める。予約エラーを足すときは、この表と、クライアントの既定の action の一覧(`ErrorPolicyProvider` の中。[実装設計書のクライアント](../design/client.md))を一緒に直す。入れ忘れは `ErrorPolicyProviderTests` が見つける
+- すべての予約エラーに既定の action を決める。予約エラーを足すときは、この表と、クライアントの既定の action の一覧(`ErrorPolicyProvider` の中。[実装設計書のクライアント](../designs/implementation/client.md))を一緒に直す。入れ忘れは `ErrorPolicyProviderTests` が見つける
 - アプリの業務エラーは、予約エラーの domain `voltech` を使えない。クライアントは `ErrorPolicyProvider` を作るときに `ArgumentException` で拒む。サーバーは確かめない
 
 ## エラーコードの置き場所
@@ -52,4 +52,4 @@ action ごとの動き(共通エラーハンドラーの既定の実装 `Default
 - 予約エラーは `Abstractions` に、アプリの業務エラーはアプリの共有コードに、C# の定数として置く
 - アプリのハンドラーは `BusinessException(ErrorCode, message, metadata?)` を投げるだけにする。ステータスへの変換は基盤が行う
 
-C# での作り方は [実装設計書のサーバー](../design/server.md#エラーの変換)。
+C# での作り方は [実装設計書のサーバー](../designs/implementation/server.md#エラーの変換)。

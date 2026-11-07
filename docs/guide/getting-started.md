@@ -28,7 +28,7 @@ client → shared, VolTech の Unity パッケージ
 - `shared/` は、`.cs` の実体を UPM パッケージに置き、サーバー側は csproj から `Compile Include` で読み込む
 - 使う版は、サブモジュールでタグ(`v0.1.0` など)を checkout して固定する
 
-この形にした理由は [実装設計書のプロジェクト構成](../design/project-structure.md#アプリからの参照)。
+この形にした理由は [実装設計書のプロジェクト構成](../designs/implementation/project-structure.md#アプリからの参照)。
 
 ## 使う版
 

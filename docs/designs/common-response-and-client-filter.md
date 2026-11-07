@@ -19,7 +19,7 @@
 
 クライアントとの取り決め(ステータスと ErrorInfo、ヘッダー名と値、予約エラー、冪等性の意味)は変えない(RFC の決めたこと 2)。この設計書で変えるのは、基盤の公開 API と内部の作りだけ。Uta はリリース前なので、基盤の公開 API の破壊的な変更は許す(RFC の決めたこと 3)。
 
-この設計書が承認されたら、次の節をこの設計書へのリンクに置き換える: `docs/spec/common-response.md` の全体、`docs/design/server.md` の「共通レスポンス項目」、`docs/design/client.md` の「共通レスポンス項目の反映」とヘッダー付与の記述(具体的な節は Detailed Implementation Plan で挙げる)。
+この設計書が承認されたら、次の節をこの設計書へのリンクに置き換える: `docs/spec/common-response.md` の全体、`docs/designs/implementation/server.md` の「共通レスポンス項目」、`docs/designs/implementation/client.md` の「共通レスポンス項目の反映」とヘッダー付与の記述(具体的な節は Detailed Implementation Plan で挙げる)。
 
 ## The Problem
 

@@ -22,10 +22,10 @@ MagicOnion でゲームのバックエンドを作る基盤(C# サーバー + Un
 |---|---|
 | [docs/designs/](docs/designs/index.md) | egm の設計書。機能ごとに、振る舞いと作り方を 1 つの文書に書く。新しい機能・変更はここに書く |
 | [docs/spec/](docs/spec/index.md) | 仕様書。基盤が何をするか(振る舞いと、クライアントとの取り決め) |
-| [docs/design/](docs/design/index.md) | 実装設計書。仕様を C# と MagicOnion でどう作るか |
+| [docs/designs/implementation/](docs/designs/implementation/index.md) | 実装設計書。仕様を C# と MagicOnion でどう作るか |
 | [docs/guide/](docs/guide/index.md) | 利用ガイド。基盤を使う人に向けた導入と使い方 |
 
-コードは設計書に書かれたとおりに作る。食い違ったら、`docs/designs/` の承認済みの設計書 → 仕様書 → 実装設計書 → コードの順に正しい。`docs/spec/`・`docs/design/` は、`docs/designs/` の設計書がまだ扱っていない部分の正として残す。`docs/designs/` の設計書が同じことを決めたら、`docs/spec/`・`docs/design/` の該当する節はその設計書へのリンクに置き換える。
+コードは設計書に書かれたとおりに作る。食い違ったら、`docs/designs/` の承認済みの設計書 → 仕様書 → 実装設計書 → コードの順に正しい。`docs/spec/`・`docs/designs/implementation/` は、`docs/designs/` の設計書がまだ扱っていない部分の正として残す。`docs/designs/implementation/` は egm の設計書ではなく、承認済みの設計書より優先しない。`docs/designs/` の設計書が同じことを決めたら、`docs/spec/`・`docs/designs/implementation/` の該当する節はその設計書へのリンクに置き換える。
 
 ### egm で設計書を書く
 
@@ -34,7 +34,7 @@ MagicOnion でゲームのバックエンドを作る基盤(C# サーバー + Un
 1. `/egm:egm-brainstorm` で要件と選択肢を詰め、`concepts_brief.md` にまとめる(省いてよい)
 2. `/egm:egm-draft` で `docs/designs/` に設計書を書く
 3. `/egm:egm-review <設計書のパス>` でレビューし、`/egm:egm-resolve` で指摘への対応を決める
-4. ユーザーが承認したら、設計書を正とする。[docs/designs/index.md](docs/designs/index.md) に載せ、`docs/spec/`・`docs/design/` の重なる節をリンクに置き換える
+4. ユーザーが承認したら、設計書を正とする。[docs/designs/index.md](docs/designs/index.md) に載せ、`docs/spec/`・`docs/designs/implementation/` の重なる節をリンクに置き換える
 5. 実装の後は `/egm:egm-drift-report` で設計書とコードのずれを確かめ、ずれは設計書に戻す
 
 ### 実装の手順

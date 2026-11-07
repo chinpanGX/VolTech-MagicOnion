@@ -39,7 +39,7 @@ namespace VolTech.Client.Unity
         /// </summary>
         /// <remarks>
         /// VolTech-gRPC 版は、開発用のツール(gRPC Monitor)が足した Interceptor をここで付けていた。
-        /// Tracing は移していない(docs/design/client.md)ので、チャンネルの CallInvoker をそのまま返す。
+        /// Tracing は移していない(docs/designs/implementation/client.md)ので、チャンネルの CallInvoker をそのまま返す。
         /// </remarks>
         public static CallInvoker CreateCallInvoker(GrpcChannel channel)
         {

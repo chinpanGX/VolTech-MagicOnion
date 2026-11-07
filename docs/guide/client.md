@@ -1,6 +1,6 @@
 # Unity クライアントでの使い方
 
-Unity のパッケージ `com.chinpangx.voltech.magiconion` の `ApiCore` で、サーバーの RPC を呼ぶ。作り方の詳細は [実装設計書のクライアント](../design/client.md)。
+Unity のパッケージ `com.chinpangx.voltech.magiconion` の `ApiCore` で、サーバーの RPC を呼ぶ。作り方の詳細は [実装設計書のクライアント](../designs/implementation/client.md)。
 
 ## 組み立て
 
