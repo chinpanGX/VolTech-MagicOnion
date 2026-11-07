@@ -63,7 +63,7 @@ RFC で指摘された問題は次の 4 つ。
 - **呼び出しごとのヘッダー**: `Metadata` はクライアントごとに使い回されるので、フィルターで書くと同時の呼び出しで混ざる(下の確認結果)
 - **失敗の受け取り方**: `await client.DrawAsync(request)` の結果はレスポンスそのもので、失敗は例外でしか届かない。アプリは `try/catch` を書かず、`IsError`・エラーコード・エラーメッセージで処理したい(2026-11-07 にオーナーが決定)
 
-2026-11-07 に、MagicOnion.Client 7.11.0 を .NET 10 の動的クライアントと偽の `CallInvoker` で動かして確かめた(スクラッチのプログラム。リポジトリには残していない)。ソースジェネレーターのクライアントで同じかは、実装の最初に確かめる(A2)。
+2026-11-07 に、MagicOnion.Client 7.11.0 を .NET 10 の動的クライアントと偽の `CallInvoker` で動かして確かめた(スクラッチのプログラム。リポジトリには残していない)。ソースジェネレーターのクライアントでも同じことを、`ClientBehaviorTests` で確かめた(「実装の前に確かめた項目」)。
 
 - フィルターの中で `await` してから `next` を呼べる。`next` を複数回呼べるので、再送をフィルターで書ける
 - `context.CallOptions.Headers` の `Metadata` は、クライアントごとに 1 つを使い回す。呼び出しごとの写しではない。フィルターで書き換えると、同じクライアントの次の呼び出しや同時の呼び出しに残る。`WithOptions` で毎回新しい `Metadata` を渡していた今のコードでは、見えなかった動き
@@ -102,10 +102,7 @@ RFC で指摘された問題は次の 4 つ。
 
 ## Open Questions
 
-未解決の項目は、実装の最初に確かめる次の 2 つだけ。結果によって Technical Plan の「2. クライアントの処理の移し先」が変わることがある。内容と影響は「最初に確かめる項目」の表に書く。
-
-*   **A1**: 本物の `MagicOnionClient` と偽の `CallInvoker` を EditMode で動かせるか
-*   **A2**: .NET の動的クライアントで確かめた動きが、ソースジェネレーターのクライアントでも同じか
+未解決の項目は無い。実装の前に確かめた結果は「実装の前に確かめた項目」に書く。
 
 ### 解決済み
 
@@ -188,7 +185,7 @@ var gachaClient = core.CreateClient<IGachaService>();
 *   `callInvoker` は `ApiChannel`、`serializerProvider` と `clientFactoryProvider` はアプリの `[MagicOnionClientGeneration]` の生成物(今の利用ガイドと同じ)
 *   `IDeviceService` のクライアントと `DeviceTokenProvider` は、今のまま作る。`ApiCore` を通さず、公式の `MagicOnionClient.Create<T>` で作ったクライアントを使う
 *   `core.CreateClient<T>()` は、基盤のフィルターと包んだ `CallInvoker` を付けて `MagicOnionClient.Create<T>` を呼ぶ。戻り値は `T` そのもの
-*   アプリは `IGachaService` と `IDeviceService` を `[MagicOnionClientGeneration]` に書く。今までと同じ。書き忘れはコンパイルでは分からず、`CreateClient<T>` で失敗するはず(未確認。A2 で確かめる)
+*   アプリは `[MagicOnionClientGeneration]` に、アプリの共有インターフェースのアセンブリの型と、`IDeviceService` を書く。今までと同じ。書いた型のアセンブリ全体が生成の対象になる。`IDeviceService` は `Abstractions` のアセンブリにあるので、別に書く。書き忘れはコンパイルでは分からず、クライアントを作るときに `NotSupportedException` になる
 
 #### 呼び方
 
@@ -229,7 +226,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 *   **成功**: `next` が返した `ResponseContext` をそのまま返す。呼び出し側の `await` にレスポンスが届く
 *   **失敗**: 共通エラーハンドラーと画面の遷移を済ませた後、`ApiException` を投げ、`ToResult` が受け止める。gRPC のクライアントが失敗を `RpcException` で返すので、基盤の中の例外はこれより減らせない。失敗のときだけのコストで、成功のときには掛からない
 *   **捨てた呼び出し**: 古いセッションの呼び出しも `ApiError.Discarded()` の `ApiException` にする。`result.Error.IsDiscarded` で分かる
-*   **RPC ごとの設定**: 今の `RpcSettings.CreateAll` のリフレクションを、`CreateClient<T>` のときに 1 回行う。設定は `context.MethodPath` のメソッド名で引く。`context.MethodPath` の `/` より後を使う。表に無いメソッド(基底インターフェースから受け継いだもの)は、順番待ちの前に `InvalidOperationException` を投げる。使い方の誤りなので、`ToResult` にも受け止めさせず、呼び出し側に届ける。今の `ArgumentException` と同じ扱い
+*   **RPC ごとの設定**: 今の `RpcSettings.CreateAll` のリフレクションを、`CreateClient<T>` のときに 1 回行う。設定は `context.MethodPath` のメソッド名で引く。`context.MethodPath` の `/` より後を使う。基底インターフェースから受け継いだメソッドは、MagicOnion のソースジェネレーターが生成せず、アプリのコンパイルエラーになる
 *   **ヘッダー**: `ApiCore` もフィルターも `Metadata` を書き換えない(クライアントごとに使い回されるため)。`ApiCallInvoker` が試行ごとに新しい `Metadata` を作り、次のヘッダーだけを入れる。`CallOptions.Headers` の中身は写さない(今の `WithOptions` と同じく丸ごと置き換える): `authorization: Bearer <token>`(トークンがあるときだけ)、`x-request-id`(冪等性の対象だけ)、`x-app-platform`・`x-app-version`(`ApiCoreOptions.AppVersion` が null でないときだけ)、`x-game-date`(持っているときだけ)。名前・値・条件は今の `ApiCore.CreateHeaders` と同じ
 *   **呼び出しごとの値**: `ApiCore` は試行ごとに `ApiCallContext`(`Token`・`RequestId`・`GameDate`・`CancellationToken`)を作り、`AsyncLocal` に入れて `next(context)` を呼び、`ValueTask` を受け取った直後(`await` の前)に null に戻す。`ApiCallInvoker` はその間に読む。`await` をまたいだ引き継ぎには頼らない。`ApiCallContext` そのものが null なら例外にする(黙ってヘッダーなしで送らない)
 *   **セッションのキャンセル**: 呼び出しの開始時に読んだ世代と `CancellationToken` を、再送を含めて最後まで使う(今と同じ)。順番待ちや認証トークンの取得の間にセッションが変わると、`CancellationToken` はキャンセル済みなので、古い呼び出しは通信の前に止まる
@@ -400,7 +397,6 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 *   **`IService<T>` の API が基盤と重なる**: アプリが `WithHandledCodes` の後に `WithHeaders`・`WithOptions` を呼ぶと、指定が消えて共通エラーハンドラーに回る。アプリが付けたヘッダー、`WithDeadline`、`WithCancellationToken` は `ApiCallInvoker` が置き換えるので効かない。利用ガイドに書く
 *   **`ApiCore` の送信の処理を書き換える**: 順と分岐は保つが、呼び出しの形が変わる。テストを先に本物のクライアントを通す形に移し、今のコードで通してから本体を変える
 *   **`next` の中で `CallInvoker` まで進むこと**: 進まないと、`ApiCallInvoker` が `ApiCallContext` を読めない。読めなければ例外になるので、黙ってヘッダーなしで送ることはない
-*   **ソースジェネレーターのクライアント**: `next` の再呼び出しと同期の確認は、実装の最初に A2 として行う
 
 --------------------------------------------------------------------------------
 
@@ -417,8 +413,8 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 ### 実装の順番
 
 1.  **設計書を承認する**: オーナーが承認してから実装に入る。Status を Approved にし、一覧に載せる(ファイル 1・2)
-2.  **未確認の項目を確かめる**(下の表)。A1 → A2 の順に行う。本体のコードを直す前に行い、結果を設計書に戻す。確認に使うコードは手元に置き、該当する段階でコミットする
-3.  **ドキュメント**: `docs:` のコミットを先に置く(ファイル 1 の A1・A2 の結果、ファイル 3〜11)
+2.  **未確認の項目を確かめる**(下の「実装の前に確かめた項目」)。済んだ
+3.  **ドキュメント**: `docs:` のコミットを先に置く(ファイル 1 の確認の結果、ファイル 3〜11)
 4.  **サーバー**: `Common` の検査(ファイル 12〜16)
 5.  **反映処理**: 反映処理を 1 つにまとめる(ファイル 25 の「段階 5」、26 の「段階 5」、29、30、33 の「段階 5」)。この段階ではラッパーのまま
 6.  **テストの移行**: 本体を変えず、テストだけを本物のクライアントと `FakeCallInvoker` に移し、今のコードで全部通す(ファイル 32・33 の「段階 6」、34、35)
@@ -427,14 +423,15 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 
 実装は 1 本のブランチで行い、段階ごとにテストが通る形でコミットする。Uta の変更はこの設計書に含まない。基盤の版を上げるときに、Uta のリポジトリで 7 RPC の呼び方と組み立ての処理を移す。サーバーのサービスは書き方が変わらない。
 
-#### 最初に確かめる項目
+#### 実装の前に確かめた項目
 
-| # | 確かめること | 方法 | 結果ごとの対応 |
-| --- | --- | --- | --- |
-| A1 | 本物の `MagicOnionClient` と偽の `CallInvoker` を EditMode で動かせるか | `FakeCallInvoker` を作り、`MagicOnionClient.Create<T>` にテスト用のフィルターを渡す最小のテストを書く(ファイル 34・35) | 動かなければ、テストの分け方をオーナーと決め直す |
-| A2 | ソースジェネレーターのクライアントでも、次が .NET の動的クライアントと同じか: `next` の複数回の呼び出し、`await` の後の `next`、`next` の中で `CallInvoker` まで進むこと、失敗で `await next(context)` が `RpcException` を投げること、成功で `ResponseHeadersAsync` を読めること、`Metadata` の使い回し、`MethodPath` の形、フィルターが投げた例外の型、`WithHeaders` を 2 回つなぐと後の指定だけが残ること、`WithHeaders` で複製したクライアントがフィルターを保つこと、`CallInvoker` の `TResponse` がレスポンスの型であること。あわせて、基底インターフェースから受け継いだメソッドが生成されるか、`[MagicOnionClientGeneration]` に書いていないインターフェースで `MagicOnionClient.Create<T>` がどう失敗するか | `Tests/EditMode/ClientBehaviorTests.cs`(ファイル 34)に書く。A1 の最小のテストもここに置く | 再送、`CallInvoker` までの進み方、例外の型、`TResponse`、`ResponseHeadersAsync` が違えば、Q4・Q9 をオーナーと決め直す。複製でフィルターが外れる、または `WithHeaders` の動きが違えば、Q9 のチェーンの指定をオーナーと決め直す。`Metadata` が写しなら、そのまま進める。`MethodPath` の形が違えば、設定の引き方を直す。受け継いだメソッドが生成されず呼べないなら、`InvalidOperationException` の分岐とそのテストを消す。`Create<T>` の失敗の仕方は、結果を利用ガイドに書く |
+2026-11-07 に、EditMode のテスト `ClientBehaviorTests`(ソースジェネレーターのクライアントと偽の `CallInvoker`)で確かめた。
 
-結果は、この設計書の該当する節に戻し、`docs/index.md` の「確かめること」に日付と方法を添えて書く。
+*   **A1**: 本物の `MagicOnionClient` と偽の `CallInvoker` を EditMode で動かせる
+*   **A2**: 「クライアントの呼び方」の節の確認結果は、ソースジェネレーターのクライアントでも同じ。`TResponse`・`next`・`Metadata`・`WithHeaders`・例外の型を確かめた
+*   **生成の範囲**: `[MagicOnionClientGeneration]` に書いた型の**アセンブリ全体**の共有インターフェースが生成される。名前を書いていなくても、同じアセンブリなら作られる
+*   **生成の対象でないアセンブリ**: `MagicOnionClient.Create<T>` が `NotSupportedException` で失敗する。コンパイルでは分からない
+*   **受け継いだメソッド**: ソースジェネレーターは基底インターフェースのメソッドの実装を作らず、アプリのコンパイルエラー(CS0535)になる。実行時に届く経路が無いので、`InvalidOperationException` の分岐は作らない
 
 ### Target Files to Create/Modify
 
@@ -445,7 +442,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 1. `docs/designs/common-response-and-client-filter.md` (Modify)
 
 *   **Type / Scope**: 設計書
-*   **Proposed Changes**: 段階 1 で Status を Approved にする。段階 2 の結果(A1・A2)を段階 3 で、実装で分かった API 名の違いを段階 8 で戻す
+*   **Proposed Changes**: 段階 1 で Status を Approved にする。段階 2 の結果を段階 3 で、実装で分かった API 名の違いを段階 8 で戻す
 
 #### 2. `docs/designs/index.md` (Modify)
 
@@ -460,7 +457,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 4. `docs/spec/headers.md`・`docs/spec/errors.md`・`docs/spec/processing-order.md` (Modify)
 
 *   **Type / Scope**: 仕様書
-*   **Proposed Changes**: ヘッダーの表は変えない。ラッパー(`ApiServiceBase<TService>`)の説明を、クライアントが共有インターフェースを直接呼ぶ形に直す。受け継いだメソッドの `ArgumentException` を `InvalidOperationException` に直す。`errors.md` の `handledCodes` を `WithHandledCodes` に、`../guide/client.md#ラッパー` へのリンクを新しい節に直す。`processing-order.md` の処理の段に `CommonResponseCheckFilter` を足す
+*   **Proposed Changes**: ヘッダーの表は変えない。ラッパー(`ApiServiceBase<TService>`)の説明を、クライアントが共有インターフェースを直接呼ぶ形に直す。受け継いだメソッドの `ArgumentException` を、アプリのコンパイルエラーに直す。`errors.md` の `handledCodes` を `WithHandledCodes` に、`../guide/client.md#ラッパー` へのリンクを新しい節に直す。`processing-order.md` の処理の段に `CommonResponseCheckFilter` を足す
 
 #### 5. `docs/spec/transaction.md` (Modify)
 
@@ -490,7 +487,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 10. `docs/index.md` (Modify)
 
 *   **Type / Scope**: 計画とチェックリスト
-*   **Proposed Changes**: Unity クライアントの行の `WithPlayerDiffApplier` などを直す。「確かめること」に A1・A2 を足す。IL2CPP と iOS の既存の項目は、確かめないまま残す(Q8)。`ApiServiceBase` が属性をリフレクションで読めるかの項目は、`RpcSettings` が読む形に書き換える。「決めること」の反映処理の記述(「3 つ」)を直す。`implementation/client.md#ラッパーの書き方` へのリンクをこの設計書へのリンクに直す。「進め方」は経過の記録なので直さない
+*   **Proposed Changes**: Unity クライアントの行の `WithPlayerDiffApplier` などを直す。「確かめること」に「実装の前に確かめた項目」を、日付と方法を添えて足す。IL2CPP と iOS の既存の項目は、確かめないまま残す(Q8)。`ApiServiceBase` が属性をリフレクションで読めるかの項目は、`RpcSettings` が読む形に書き換える。「決めること」の反映処理の記述(「3 つ」)を直す。`implementation/client.md#ラッパーの書き方` へのリンクをこの設計書へのリンクに直す。「進め方」は経過の記録なので直さない
 
 #### 11. `CHANGELOG.md` (Modify)
 
@@ -604,7 +601,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 32. `Unity/com.chinpangx.voltech.magiconion/Tests/EditMode/ApiCoreTests.cs` (Modify)
 
 *   **Type / Scope**: EditMode テスト
-*   **Proposed Changes**: 段階 6: 偽のサービスをやめ、`FakeCallInvoker` と本物のクライアントを `TestApi` に渡す形に書き直す。本体は変えない。確認の内容も変えず、今のコードで全部通すことを確かめる。ヘッダーの確認は `FakeCallInvoker` に記録したヘッダーを読む形にする。`FakeTokenProvider`・`RecordingErrorHandler` はこのファイルに残す。`ITestService` に値型を返す RPC を足す。別のサービスの確認に使う共有インターフェースと、基底インターフェースを持つ共有インターフェース(受け継いだメソッドの確認に使う)を足し、ファイル 34 の `[MagicOnionClientGeneration]` に入れる。段階 7: `core.CreateClient<ITestService>()` と `ToResult()` に変える。`handledCodes` は `WithHandledCodes` にする。`TestApi` を消す。未知のメソッドのテストは、受け継いだメソッドが `InvalidOperationException` になり `ToResult` を素通りすることの確認に変える。`RpcSettings.CreateAll` のテストは残す。段階 7 で次を足す: 別のサービスのクライアントどうしでも冪等性の対象の RPC が順番に送られること、`x-voltech-call` がサーバーに送られないこと、同じクライアントの同時の呼び出しでヘッダーが混ざらないこと、`WithHandledCodes` のクライアントを変数に持って 2 回呼んでも指定が効くこと、試行ごとに締め切りが新しくなること、順番待ちや認証トークンの取得の間に `ResetSession` すると、`FakeCallInvoker` の `Func` が呼ばれず、結果の `Error.IsDiscarded` が true になること、`ToResult` を付けないと `ApiException` が届くこと、`WithoutActivity` で進行中を通知しないこと、`ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED` が共通エラーハンドラーを通らず `IsError` の結果になること、`FakeRpcErrors.ApiFailureResult<T>` を `ToResult` が失敗の結果にすること、値型のレスポンスの RPC が反映処理があっても動くこと、アプリの `WithHeaders` のヘッダーが送られないこと
+*   **Proposed Changes**: 段階 6: 偽のサービスをやめ、`FakeCallInvoker` と本物のクライアントを `TestApi` に渡す形に書き直す。本体は変えない。確認の内容も変えず、今のコードで全部通すことを確かめる。ヘッダーの確認は `FakeCallInvoker` に記録したヘッダーを読む形にする。`FakeTokenProvider`・`RecordingErrorHandler` はこのファイルに残す。`ITestService` に値型を返す RPC を足す。別のサービスの確認に使う共有インターフェースを足す(同じアセンブリなので生成の対象になる)。段階 7: `core.CreateClient<ITestService>()` と `ToResult()` に変える。`handledCodes` は `WithHandledCodes` にする。`TestApi` と未知のメソッドのテストを消す。`RpcSettings.CreateAll` のテストは残す。段階 7 で次を足す: 別のサービスのクライアントどうしでも冪等性の対象の RPC が順番に送られること、`x-voltech-call` がサーバーに送られないこと、同じクライアントの同時の呼び出しでヘッダーが混ざらないこと、`WithHandledCodes` のクライアントを変数に持って 2 回呼んでも指定が効くこと、試行ごとに締め切りが新しくなること、順番待ちや認証トークンの取得の間に `ResetSession` すると、`FakeCallInvoker` の `Func` が呼ばれず、結果の `Error.IsDiscarded` が true になること、`ToResult` を付けないと `ApiException` が届くこと、`WithoutActivity` で進行中を通知しないこと、`ACCOUNT_DATA_CORRUPTED`・`ACCOUNT_SAVE_FAILED` が共通エラーハンドラーを通らず `IsError` の結果になること、`FakeRpcErrors.ApiFailureResult<T>` を `ToResult` が失敗の結果にすること、値型のレスポンスの RPC が反映処理があっても動くこと、アプリの `WithHeaders` のヘッダーが送られないこと
 
 #### 33. `Unity/com.chinpangx.voltech.magiconion/Tests/EditMode/CommonResponseTests.cs` (Modify)
 
@@ -614,12 +611,12 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 34. `Unity/com.chinpangx.voltech.magiconion/Tests/EditMode/Support/FakeCallInvoker.cs`・`Support/TestClients.cs`・`ClientBehaviorTests.cs` (Create)
 
 *   **Type / Scope**: EditMode テストの部品
-*   **Proposed Changes**: `FakeCallInvoker` はテストの中だけで使う(`Runtime/Client/Testing/` には置かない)。`AsyncUnaryCall<TRequest, TResponse>` だけを実装し、ほかは `NotSupportedException` にする。`method.FullName`、呼び出しの順番、`options` を記録し、テストが設定した `Func<FakeCall, Task<FakeResult>>` を呼ぶ。`options.CancellationToken` がキャンセル済みなら、`Func` を呼ばず `RpcException(StatusCode.Cancelled)` にする(本物の gRPC と同じ動き。記録は残す)。`Task` を返すので、`TaskCompletionSource` で応答を保留でき、呼び出しの順番やメソッド名で結果を変えられ、デリゲートの中で `ResetSession` を呼べる。`FakeResult` の成功は、レスポンスを MessagePack にしたバイト列とレスポンスヘッダー。バイト列は `method.ResponseMarshaller.ContextualDeserializer` と、テストの `DeserializationContext` で読んで返す(スクラッチのプログラムと同じ)。失敗は `RpcException`。バイト列にするのは、MagicOnion が内部の型で通信するので、型付きの値を渡せないため。`options` の `Metadata` は使い回されるので、呼ばれた時点の中身を写して記録する。`TestClients` は `partial` のクラスで、`[MagicOnionClientGeneration(typeof(ITestService), typeof(ICommonTestService))]` と、ファイル 32 で足す共有インターフェースを付ける。`SerializerProvider` は、生成された `Resolver` と `StandardResolver.Instance` の `CompositeResolver` から作り(`Unity/VolTech.Sandbox/Assets/Smoke/SmokeClient.cs` の `RunAsync` と同じ)、`ClientFactoryProvider` は生成されたものを返す。`ClientBehaviorTests` は A1・A2 の確認のテストで、そのまま残す
+*   **Proposed Changes**: `FakeCallInvoker` はテストの中だけで使う(`Runtime/Client/Testing/` には置かない)。`AsyncUnaryCall<TRequest, TResponse>` だけを実装し、ほかは `NotSupportedException` にする。`method.FullName`、呼び出しの順番、`options` を記録し、テストが設定した `Func<FakeCall, Task<FakeResult>>` を呼ぶ。`options.CancellationToken` がキャンセル済みなら、`Func` を呼ばず `RpcException(StatusCode.Cancelled)` にする(本物の gRPC と同じ動き。記録は残す)。`Task` を返すので、`TaskCompletionSource` で応答を保留でき、呼び出しの順番やメソッド名で結果を変えられ、デリゲートの中で `ResetSession` を呼べる。`FakeResult` の成功は、レスポンスを MessagePack にしたバイト列とレスポンスヘッダー。バイト列は `method.ResponseMarshaller.ContextualDeserializer` と、テストの `DeserializationContext` で読んで返す(スクラッチのプログラムと同じ)。失敗は `RpcException`。バイト列にするのは、MagicOnion が内部の型で通信するので、型付きの値を渡せないため。`options` の `Metadata` は使い回されるので、呼ばれた時点の中身を写して記録する。`TestClients` は `partial` のクラスで、`[MagicOnionClientGeneration]` にテストのアセンブリの型を書く。`SerializerProvider` は、生成された `Resolver` と `StandardResolver.Instance` の `CompositeResolver` から作り(`Unity/VolTech.Sandbox/Assets/Smoke/SmokeClient.cs` の `RunAsync` と同じ)、`ClientFactoryProvider` は生成されたものを返す。`ClientBehaviorTests` は MagicOnion の動きの確認のテストで、そのまま残す
 
 #### 35. `Unity/com.chinpangx.voltech.magiconion/Tests/EditMode/VolTech.MagicOnion.Client.Tests.EditMode.asmdef` (Modify)
 
 *   **Type / Scope**: ビルドの設定
-*   **Proposed Changes**: 本物のクライアントを動かすのに要る参照を足す。この asmdef は `overrideReferences: true` なので、`precompiledReferences` に `MagicOnion.Client.dll`・`MagicOnion.Shared.dll`・`MagicOnion.Serialization.MessagePack.dll`・`MessagePack.dll` のようにファイル名で書く。正確な一覧は A1 で確かめる
+*   **Proposed Changes**: 本物のクライアントを動かすのに要る参照を足す。この asmdef は `overrideReferences: true` なので、`precompiledReferences` に `MagicOnion.Client.dll`・`MagicOnion.Shared.dll`・`MagicOnion.Serialization.MessagePack.dll`・`MessagePack.dll` のようにファイル名で書く。`ClientBehaviorTests` で確かめた一覧
 
 ### Verification Plan
 

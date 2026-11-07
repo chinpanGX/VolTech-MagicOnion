@@ -21,7 +21,7 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 | `VolTech.Server` の `Transaction/` | `ITransactions`、冪等性、ゲームログ、マイグレーション | あり。共通レスポンス項目(`ICommonResponseCollector<TCommon>`・`AddCommonResponse`)もあり(2026-11-03) |
 | `VolTech.Server` の `Logging/` | `RpcLogFilter`(アクセスログと例外の変換) | あり。出力形式(ZLogger)はアプリに任せている |
 | `VolTech.Server` の `Hosting/` | `AddVoltechServer()`。フィルターの順序を固定する | あり |
-| Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | `Runtime/Client/` に `ApiCore`・`DeviceTokenProvider`・エラー処理・アカウント保存を移した(2026-10-30)。共通レスポンス項目の反映(`WithPlayerDiffApplier` など)を足した(2026-11-03)。Tracing、`Runtime/Unity/` の部品(`ApiChannel` 以外)は移していない([実装設計書のクライアント](designs/implementation/client.md#移していないもの)) |
+| Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | `Runtime/Client/` に `ApiCore`・`DeviceTokenProvider`・エラー処理・アカウント保存を移した(2026-10-30)。共通レスポンス項目の反映(`WithCommonResponseApplier`)と、公式の呼び方(`CreateClient<T>`・`ToResult`)は [設計書 1](designs/common-response-and-client-filter.md)。Tracing、`Runtime/Unity/` の部品(`ApiChannel` 以外)は移していない([実装設計書のクライアント](designs/implementation/client.md#移していないもの)) |
 | `Unity/VolTech.Sandbox` | 開発用の Unity 7 プロジェクト。パッケージを `file:` で参照する | あり |
 
 ## 確かめること
@@ -37,7 +37,9 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 - [ ] iOS の IL2CPP(AOT)で、MagicOnion のクライアントと MessagePack が動くか
 - [ ] Unity の IL2CPP で、`Abstractions` の MessagePack の型(`RegisterResult` など)のフォーマッターが生成されるか
 - [x] MagicOnion 7.11.0 は、1 つのクラスが `IService<T>` を 2 つ実装しても `ServiceBase<T>` の `T` だけを登録するか。登録した。もう一方の RPC は `Unimplemented` になった(2026-10-30、Uta の外の一時的なテストで確かめた。テストはリポジトリに残していない)。MagicOnion の版を上げたら確かめ直す。サーバーの `RpcSettings` はこの前提で `ServiceBase<T>` の `T` だけを読む([実装設計書のサーバー](designs/implementation/server.md))
-- [ ] Unity の IL2CPP(AOT)で、`ApiServiceBase` が共有インターフェースの属性(`[SkipAuth]`・`[NoSideEffects]`)をリフレクションで読めるか。コードのストリッピングで属性が消えないか。読めなかったら、属性を読む部分をソースジェネレーターに変える([実装設計書のクライアント](designs/implementation/client.md#ラッパーの書き方))
+- [ ] Unity の IL2CPP(AOT)で、`RpcSettings` が共有インターフェースの属性(`[SkipAuth]`・`[NoSideEffects]`)をリフレクションで読めるか。コードのストリッピングで属性が消えないか
+- [x] MagicOnion のクライアントの `IClientFilter` と `CallInvoker` の動き(`next` の再呼び出し、`next` の中で `CallInvoker` まで進むこと、`Metadata` の使い回し、`WithHeaders`、例外の型、`TResponse`)。ソースジェネレーターのクライアントで確かめた(2026-11-07、EditMode の `ClientBehaviorTests`、7000.0.0a12 の Editor)
+- [x] `[MagicOnionClientGeneration]` は、書いた型のアセンブリ全体を生成の対象にする。対象でないアセンブリは `MagicOnionClient.Create<T>` が `NotSupportedException` になる。基底インターフェースから受け継いだメソッドは実装が作られず、コンパイルエラーになる(2026-11-07、同じテスト)
 - [x] Unity 7 で MagicOnion.Client・MessagePack・YetAnotherHttpHandler が動くか。7000.0.0a12 の Editor(CoreCLR)で、ソースジェネレーターのクライアントから h2c の Unary を呼べた(2026-10-26)。IL2CPP のプレイヤーは上の iOS の項目で確かめる。Editor の中では、NuGet で入れた gRPC ではなく Burst が同梱する gRPC 2.61.0(`Editor/Data/Tools/Burst/Client/`)が読み込まれる(アセンブリの版がどれも 2.0.0.0 のため)。Editor での確認は 2.61.0 での結果で、2.84.0 で動くかはプレイヤーのビルドで確かめる
 - [x] 使う版を決める。MagicOnion 7.11.0、MessagePack 3.1.12、YetAnotherHttpHandler 1.11.7、gRPC 2.84.0、NuGetForUnity 4.5.0(一覧は [導入](guide/getting-started.md#使う版))
 
@@ -45,7 +47,7 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 
 - [x] DB の最終決定。PostgreSQL + Npgsql、マイグレーションは DbUp。基盤は Dapper に依存しない(アプリが使うのは自由)(2026-10-27)
 - [x] ゲーム内の日付の設定形式。`VoltechServerOptions.GameDay`(`ResetHour`・`TimeZone`)を ASP.NET Core の設定から入れる(2026-10-27)
-- [x] 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組み(Rust 版のコレクター)。アプリが 1 つの型 `TCommon` にまとめ、レスポンスの型が `IApiResponse<TCommon>` を実装する(戻り値の型は変えない)。サーバーは `ICommonResponseCollector<TCommon>` をトランザクションごとに作り、`RunAsync` が本体の後に詰める。クライアントの反映処理は VolTech-gRPC 版と同じ名前の 3 つで、どれにも `TCommon` を渡す(2026-11-03。[共通レスポンス項目](spec/common-response.md))
+- [x] 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組み(Rust 版のコレクター)。アプリが 1 つの型 `TCommon` にまとめ、レスポンスの型が `IApiResponse<TCommon>` を実装する(戻り値の型は変えない)。サーバーは `ICommonResponseCollector<TCommon>` をトランザクションごとに作り、`RunAsync` が本体の後に詰める。クライアントの反映処理は `ICommonResponseApplier<TCommon>` 1 つ(2026-11-07。[設計書 1](designs/common-response-and-client-filter.md)、[共通レスポンス項目](spec/common-response.md))
 - [ ] ログの出力形式。基盤は `ILogger` のスコープとアクセスログを出すだけで、JSON での出力(ZLogger)はアプリに任せている。基盤で決めるか
 - [ ] `StoredAccount` のシリアライズ: protobuf のまま残すか、MessagePack に移すか(移すと保存形式が変わる)。今は VolTech-gRPC 版のまま変えていない
 - [ ] Tracing(gRPC Monitor)を MessagePack で作り直すか、リリース外のツールとして割り切るか

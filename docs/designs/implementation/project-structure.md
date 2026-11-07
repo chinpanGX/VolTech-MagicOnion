@@ -29,7 +29,7 @@ VolTech-MagicOnion/
 | --- | --- |
 | `Status/` | サーバー時刻とゲーム内の日付、日付変更の判定、`ServerTimeFilter`・`DateChangeFilter` |
 | `Auth/` | `DeviceService`、トークン、`AuthFilter`、`IPlayerResolver` |
-| `Transaction/` | `ITransactions`・`TxContext`、冪等性、ゲームログ、基盤のテーブルのマイグレーション(`VoltechDatabase`) |
+| `Transaction/` | `ITransactions`・`TxContext`、`CommonResponseCheckFilter`、冪等性、ゲームログ、基盤のテーブルのマイグレーション(`VoltechDatabase`) |
 | `Logging/` | `RpcLogFilter`(アクセスログと例外の変換)。ログの出力先はアプリが決める(ZLogger を推奨) |
 | `Hosting/` | `AddVoltechServer()`、設定(`VoltechServerOptions`)、`ServiceContext` の拡張メソッド。フィルターの順序をここで固定する |
 | `Internal/` | フィルターどうしで共有する内部の部品(RPC ごとの設定表、エラーの組み立て) |

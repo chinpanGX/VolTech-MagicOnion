@@ -6,7 +6,8 @@
 2. サーバー時刻(`ServerStatusLayer` のうちヘッダーの部分): レスポンスに `x-server-time` と `x-game-date` を付ける。業務エラーのレスポンスにも付ける。DB は使わない。強制アップデートとメンテナンスの判定は持たない(足すときはこの段に入れる)
 3. 認証(`AuthLayer`): Bearer を検証する。`[SkipAuth]` の RPC は検証を省き、そのまま次へ進める。詳細は [認証](auth.md)
 4. 日付変更の判定(`DateChangeLayer`): リクエストの `x-game-date` が今のゲーム内の日付と違えば `DATE_CHANGED` を返す。認証の内側に置く
-5. 本体: トランザクションの中で動かす。冪等性の判定もここで行う。詳細は [冪等性・トランザクション・ゲームログ](transaction.md)
+5. 共通レスポンス項目の検査: 本体の後に、`IApiResponse<>` のレスポンスが `RunAsync` を通ったものかを確かめる。違えば `INTERNAL` にする([共通レスポンス項目](common-response.md))
+6. 本体: トランザクションの中で動かす。冪等性の判定もここで行う。詳細は [冪等性・トランザクション・ゲームログ](transaction.md)
 
 - 対象は Unary のみ。StreamingHub は別に設計する
 - サーバーは HTTP/2 で待ち受ける。クライアント(YetAnotherHttpHandler)は HTTP/2 で接続する

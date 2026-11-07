@@ -1,6 +1,6 @@
 # クライアント(Unity)
 
-VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作る。通信の骨格は流用でき、変わるのは `call` の型、レスポンス型の扱い、`DeviceTokenProvider` の通信部分の 3 点。`ApiCoreBuilder` の公開 API は残し、中身だけを差し替えれば、アプリ側のコードは書き直さずに済む(共通レスポンス項目の反映処理は、型引数が付く。下の「共通レスポンス項目の反映」)。
+VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作る。通信の骨格は流用でき、変わるのは `call` の型、レスポンス型の扱い、`DeviceTokenProvider` の通信部分の 3 点。アプリの呼び方は MagicOnion の公式に合わせ、共有インターフェースを直接呼ぶ([設計書 1](../common-response-and-client-filter.md))。
 
 | 対象 | 扱い | 理由 |
 | --- | --- | --- |
@@ -9,10 +9,11 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | `ErrorConverter`、`ErrorPolicy`、`ReservedErrors`、`ErrorHandling/` | 流用 | サーバーが ErrorInfo を同じ形で返す限り無修正 |
 | `EncryptedFileAccountStore` などアカウント保存 | 流用 | `StoredAccount` は VolTech-gRPC 版のまま変えていない(protobuf。MessagePack に移すかは[決めること](../../index.md#決めること)) |
 | `ApiHeaders`、`AppVersion`、`ServerClock` | 流用 | ヘッダー名が同じ |
-| `ApiCore.InvokeAsync` の `call`(`AsyncUnaryCall<T>`) | 差し替え | `UnaryResult<T>` に変える。`WithOptions(CallOptions)` でヘッダーと締め切りを渡す |
-| `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` | 差し替え | レスポンス(`IMessage`)ではなく、アプリの共通レスポンス項目の型 `TCommon` を受け取る `IPlayerDiffApplier<TCommon>` などにする |
+| `ApiCore.InvokeAsync` の `call`(`AsyncUnaryCall<T>`) | 差し替え | `IClientFilter` の `next` に変える。ヘッダーと締め切りは包んだ `CallInvoker` で付ける([設計書 1](../common-response-and-client-filter.md)) |
+| `IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier` | 差し替え | `ICommonResponseApplier<TCommon>` 1 つにまとめる([設計書 1](../common-response-and-client-filter.md)) |
 | `DeviceTokenProvider` の通信部分 | 差し替え | 生成された `DeviceGrpc` を MagicOnion の `IDeviceService` に替える |
-| `ApiServiceBase` と生成ラッパー、`RpcSettings` | 差し替え | 共有インターフェースの属性から設定を読む |
+| `ApiServiceBase` と生成ラッパー | 不要 | アプリが共有インターフェースを直接呼ぶ |
+| `RpcSettings` | 差し替え | 共有インターフェースの属性から設定を読む |
 | Tracing(gRPC Monitor) | 要確認 | protobuf メッセージの記録が前提だと思われる(未読) |
 | `protoc-gen-voltech-grpc`(ラッパー生成)、buf の設定、`Runtime/Generated/` の RPC 部分 | 不要 | proto を使わなくなる。エラーコードも C# の定数を共有するので生成しない |
 
@@ -24,9 +25,8 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 
 | VolTech-gRPC 版 | この基盤 | 変えたところ |
 | --- | --- | --- |
-| `ApiCore`・`ApiCoreBuilder`・`ApiCoreOptions`・`ApiResult` | 同じ名前 | `call` を `Func<TClient, TRequest, UnaryResult<TResponse>>` にした。`ApiCore` が `client.WithOptions(new CallOptions(headers, deadline, cancellationToken))` を作ってから `call` に渡す。`TClient` は `IService<TClient>`。共通レスポンス項目の反映を外した(下) |
-| `ApiServiceBase`(生成ラッパーの基底) | `ApiServiceBase<TService>` | 下の「ラッパーの書き方」 |
-| `ApiServiceBase.RpcSettings`(生成ラッパーが持つ) | `Internal/RpcSettings`(internal) | `TService`(共有インターフェース)の属性から作る。`[SkipAuth]` はインターフェースかメソッド、`[NoSideEffects]` はメソッド。冪等性の対象は、どちらも付かない RPC。サーバーの `RpcSettings` と同じく、共有インターフェースの属性だけを読む([ヘッダーと RPC ごとの設定](../../spec/headers.md#rpc-ごとの設定は属性に置く))。名前は `IGachaService/DrawAsync` の形 |
+| `ApiCore`・`ApiCoreBuilder`・`ApiCoreOptions`・`ApiResult` | 同じ名前 | `ApiCore` は `ApiCallFilter`(`IClientFilter`)から動く。呼び方と `ApiResult<T>` は [設計書 1](../common-response-and-client-filter.md) |
+| `ApiServiceBase.RpcSettings`(生成ラッパーが持つ) | `Internal/RpcSettings`(internal) | `CreateClient<T>` のときに `T`(共有インターフェース)の属性から作る。`[SkipAuth]` はインターフェースかメソッド、`[NoSideEffects]` はメソッド。冪等性の対象は、どちらも付かない RPC。サーバーの `RpcSettings` と同じく、共有インターフェースの属性だけを読む([ヘッダーと RPC ごとの設定](../../spec/headers.md#rpc-ごとの設定は属性に置く))。名前は `IGachaService/DrawAsync` の形 |
 | `Auth/DeviceTokenProvider` | 同じ名前 | コンストラクターは `CallInvoker` の代わりに `IDeviceService`(アプリが `MagicOnionClient.Create` で作ったもの)を受け取る。`WithOptions` でアプリのバージョンのヘッダーと締め切りを付けて `RegisterAsync(secretKey)`・`IssueTokenAsync(deviceId, secretKey)` を呼ぶ。期限は `IssueTokenResult.ExpiresAt`(UTC の `DateTime`)をそのまま使う |
 | `Auth/` のほか(`AccountData`・`IAccountStore`・`EncryptedFileAccountStore`・例外・`AccountStatus`) | 同じ名前 | なし |
 | `Runtime/Generated/Messages/VolTech/V1/AccountStore.cs`(`StoredAccount`) | `Generated/AccountStore.cs` | なし(protoc が生成したまま。保存形式を変えない) |
@@ -40,48 +40,13 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 
 static フィールドは定数と変えられない値だけにした(Unity 7 のアナライザーの UAL0010。[プロジェクト構成](project-structure.md#共有のしかた))。VolTech-gRPC 版の `ApiError` の空の辞書と `DeviceTokenProvider` の `refreshMargin` は、呼ぶたびに作るか定数にした。`Generated/AccountStore.cs` は protoc の生成物のまま static フィールドを持つ。
 
-### ラッパーの書き方
+### 呼び方と共通レスポンス項目の反映
 
-VolTech-gRPC 版はラッパーを proto から生成していた。MagicOnion では生成しないので、アプリが共有インターフェースごとに書く。
-
-```csharp
-public sealed class GachaApi : ApiServiceBase<IGachaService>
-{
-    public GachaApi(ApiCore core, IGachaService client) : base(core, client) { }
-
-    public UniTask<ApiResult<DrawResult>> DrawAsync(int count, IEnumerable<ErrorCode> handledCodes = null)
-    {
-        return InvokeAsync(nameof(IGachaService.DrawAsync), count, static (c, r) => c.DrawAsync(r), handledCodes);
-    }
-}
-```
-
-- `InvokeAsync(methodName, request, call, handledCodes = null, notifyActivity = true)`。`methodName` で RPC ごとの設定を引く。`TService` に無い名前なら `ArgumentException`
-- 引数が複数の RPC は、`request` をタプルにして `call` の中で展開する
-- RPC ごとの設定は、コンストラクターで `TService` のメソッドを読んで表にする(リフレクション)。MagicOnion はメソッドのオーバーロードを許さないので、名前で一意に決まる
-- [設計書 1](../common-response-and-client-filter.md) でソースジェネレーターに置き換える案を検討中(承認前)。次の理由は今の実装のもの
-- リフレクションにした理由: 読むのはラッパーを作るときの 1 回だけで、呼び出しのたびには読まない。ソースジェネレーターにすると、`Abstractions` の属性を読む生成器を基盤で作って Unity とサーバーの両方に入れることになり、今の規模では手間に見合わない。サーバーも同じ属性をリフレクションで読むので、読み方を揃えやすい。IL2CPP(AOT)でも属性を読めるかは確かめていない([確かめること](../../index.md#確かめること))。読めなかったら、同じ属性を読むソースジェネレーターに変える(ラッパーに設定を書く形は、属性だけを読むという[仕様](../../spec/headers.md#rpc-ごとの設定は属性に置く)から外れるので採らない)
-- 対応するのは `UnaryResult<T>` を返すメソッドだけ。レスポンスの無い `UnaryResult` には対応していない
-
-### 共通レスポンス項目の反映
-
-[共通レスポンス項目](../../spec/common-response.md) の反映を、VolTech-gRPC 版と同じ名前で持つ。
-
-```csharp
-public interface IPlayerDiffApplier<TCommon> where TCommon : class   { UniTask ApplyAsync(TCommon common); }
-public interface IBadgeApplier<TCommon> where TCommon : class        { UniTask ApplyAsync(TCommon common); }
-public interface INotificationApplier<TCommon> where TCommon : class { UniTask ApplyAsync(TCommon common); }
-```
-
-- `ApiCoreBuilder.WithPlayerDiffApplier<TCommon>`・`WithBadgeApplier<TCommon>`・`WithNotificationApplier<TCommon>` で渡す。どれも省略できる。`Build` で、渡した反映処理の `TCommon` がすべて同じかを確かめ、違えば `InvalidOperationException`
-- VolTech-gRPC 版はレスポンス(`IMessage`)を渡し、アプリが `IHasPlayerDiff` などで中身を取り出していた。この基盤では `ApiCore` が `IApiResponse<TCommon>` から `Common` を取り出して渡す。`Common` が null なら、どれも呼ばない
-- `ApiCore` は成功したレスポンスで、レスポンスヘッダーを反映した後、呼び出し側に返す前に player_diff → バッジ → 通知の順に呼ぶ(`ApplyCommonFieldsAsync`)。順番待ちの中で行う
-- 反映の例外は、どれを反映していたかとレスポンスの型をログに出し、`ErrorConverter.FromClientException` で `CLIENT_ERROR` にして共通エラーハンドラーに渡す。残りは呼ばない。通信の `try` の外で呼ぶので、エラーハンドラーが Retry を返しても送り直さない(VolTech-gRPC 版と同じ)
-- 反映処理を 1 つも渡していない `ApiCore` は、`Common` を見ない。反映処理と違う `TCommon` の `IApiResponse<>` を実装したレスポンスも見ない(型の判定を呼ぶたびにしないため。サーバーには 1 つの `TCommon` しか登録できないので、食い違いはサーバーで先に `INTERNAL` になる)
+[設計書 1](../common-response-and-client-filter.md)に書く。
 
 ### 移していないもの
 - Tracing(`Runtime/Tracing/`、`Editor/` の gRPC Monitor): 要確認のため
-- `Testing/FakeCallInvoker`・`FakeCall`: MagicOnion のクライアントは CallInvoker に MagicOnion の内部の型でリクエストを渡すので、RPC ごとに型付きの処理を登録する形のままでは使えない。テストは共有インターフェースを実装した偽のクライアントで書いた(`Tests/EditMode/`)。アプリ向けの偽のクライアントの形は決めていない
+- `Testing/FakeCallInvoker`・`FakeCall`: アプリ向けには移していない。アプリのテストは共有インターフェースを実装した偽のクライアントで書き、失敗は `FakeRpcErrors.ApiFailureResult<T>` で返す。基盤のテストは `Tests/EditMode/Support/FakeCallInvoker.cs` で本物の `MagicOnionClient` を動かす。MagicOnion は内部の型で通信するので、応答は MessagePack のバイト列で渡す
 - `Runtime/Unity/` のうち `ApiChannel` 以外(`UnityAccountStore`・`ServerClockResetter`・`UnityApiLogger`・`UnityAppVersion`): この表に載っておらず、置き場所(`Runtime/Client/` に入れるか、Unity 用の asmdef を分けるか)を決めていない
 - `Runtime/Generated/` の RPC 部分(`DeviceGrpc`・`Device`・`AuthOptions`)と `Runtime/Client/Errors/ReservedErrors.cs`(生成物): 不要
 
@@ -90,8 +55,9 @@ public interface INotificationApplier<TCommon> where TCommon : class { UniTask A
 `Tests/EditMode/`(asmdef `VolTech.MagicOnion.Client.Tests.EditMode`)。Sandbox の `manifest.json` の `testables` にパッケージを入れて、Test Runner の EditMode で動かす。
 
 - VolTech-gRPC 版から移した: `DefaultCommonErrorHandlerTests`・`EncryptedFileAccountStoreTests`・`RpcErrorDetailsTests`・`ServerClockTests`・`DeviceTokenProviderTests`(`FakeCallInvoker` の代わりに、`IDeviceService` を実装した偽のクライアントを使う)
-- 足した: `ApiCoreTests`。属性から RPC ごとの設定を読むこと、`authorization`・`x-request-id`・締め切りの付け方、`x-server-time`・`x-game-date` の反映、`UNAUTHENTICATED` での 1 回の再送(2 回続けて `UNAUTHENTICATED` なら、弾かれたトークンを捨て、それ以上は自動で再送せずに共通エラーハンドラーに `UNKNOWN_ERROR` を渡す。そこで共通エラーハンドラーが `ErrorDecision.Retry` を返したら、新しいトークンで送る)、`[SkipAuth]` の RPC は順番待ちをせず(冪等性の対象の RPC が応答を待っている間にも送れる)`x-request-id` を付けないこと、共通エラーハンドラーの `ErrorDecision.Retry` の後にまた `UNAUTHENTICATED` なら 1 回だけ自動で再送すること、セッションのキャンセルトークンを `CallOptions` に渡すこと、共通エラーハンドラーが `ErrorDecision.Retry` を返したら同じ `x-request-id` で送り直すこと、`ResetSession` でトークンとゲーム内の日付を捨てること、エラーの変換と `handledCodes`。偽のクライアントはレスポンスヘッダーを読めるように、`IResponseContext<T>` を包んだ `UnaryResult<T>` を返す
-- 足した: `CommonResponseTests`。player_diff → バッジ → 通知の順に `Common` を渡すこと、`Common` が null なら呼ばないこと、反映の例外で残りを呼ばず `CLIENT_ERROR` を共通エラーハンドラーに渡して失敗を返すこと(送り直さない)、古いセッションのレスポンスは反映しないこと、`TCommon` が食い違うと `Build` で例外になること
+- 足した: `ClientBehaviorTests`。基盤が前提にする MagicOnion のクライアントの動き(`next` の再呼び出し、`Metadata` の使い回し、`WithHeaders`、例外の型など)を、ソースジェネレーターのクライアントで確かめる。MagicOnion の版を上げたときに、前提が崩れていないかを見る
+- 足した: `ApiCoreTests`。本物の `MagicOnionClient` と `FakeCallInvoker` で、ヘッダー・締め切り・キャンセル・再認証・再送・順番待ち・共通エラーハンドラー・`ToResult`・`WithHandledCodes` を確かめる
+- 足した: `CommonResponseTests`。反映処理に `Common` を渡すこと、`Common` が null なら呼ばないこと、反映の例外を `CLIENT_ERROR` として共通エラーハンドラーに渡して失敗を返すこと(送り直さない)、古いセッションのレスポンスは反映しないこと
 - 足した: `ErrorPolicyProviderTests`。`ReservedErrors` の公開フィールドをリフレクションですべて列挙し、どれにも既定の action があり、[予約エラーの表](../../spec/errors.md#予約エラー)と同じであることを確かめる。予約エラーを足して既定の action を入れ忘れると失敗する
 - 移していない: `ApiTraceTests`(Tracing)
 

@@ -4,4 +4,4 @@
 
 - [導入](getting-started.md): アプリのリポジトリへの置き方、参照のしかた、使う版
 - [サーバーでの使い方](server.md): `Program.cs` での登録、ハンドラーの書き方、設定
-- [Unity クライアントでの使い方](client.md): `ApiCore` の組み立て、ラッパーの書き方
+- [Unity クライアントでの使い方](client.md): `ApiCore` の組み立て、呼び方

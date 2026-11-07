@@ -2,7 +2,7 @@
 
 ## フィルター
 
-[リクエストの処理順](../../spec/processing-order.md) の 1〜4 を、MagicOnion のサーバーフィルターとして外側から重ねる。5 の本体はフィルターにしない。
+[リクエストの処理順](../../spec/processing-order.md) の 1〜5 を、MagicOnion のサーバーフィルターとして外側から重ねる。6 の本体はフィルターにしない。
 
 | 順 | フィルター | Rust 版 | フォルダー |
 | --- | --- | --- | --- |
@@ -10,9 +10,10 @@
 | 2 | `ServerTimeFilter` | `ServerStatusLayer`(ヘッダーの部分) | `Status/` |
 | 3 | `AuthFilter` | `AuthLayer` | `Auth/` |
 | 4 | `DateChangeFilter` | `DateChangeLayer` | `Status/` |
-| 5 | ハンドラー(`ITransactions.RunAsync` で包む) | `Transactions::run` | `Transaction/` |
+| 5 | `CommonResponseCheckFilter` | なし | `Transaction/` |
+| 6 | ハンドラー(`ITransactions.RunAsync` で包む) | `Transactions::run` | `Transaction/` |
 
-`AddVoltechServer()` が 1〜4 を `MagicOnionOptions.GlobalFilters` に決まった順で登録し、アプリが順序を入れ替えられないようにする。`Order` は `int.MinValue` から順に 1 ずつ増やす(`VoltechServerExtensions.FilterOrder`)。アプリのフィルター(`Order` の既定は `int.MaxValue`)は、必ず基盤より内側で動く。
+`AddVoltechServer()` が 1〜5 を `MagicOnionOptions.GlobalFilters` に決まった順で登録し、アプリが順序を入れ替えられないようにする。`Order` は `int.MinValue` から順に 1 ずつ増やす(`VoltechServerExtensions.FilterOrder`)。アプリのフィルター(`Order` の既定は `int.MaxValue`)は、必ず基盤より内側で動く。
 
 トランザクションと冪等性をフィルターにしないのは、判定と保存済みレスポンスの書き込みを、本体と同じトランザクションの中で行う必要があるため(Rust 版の `Transactions::run` と同じ理由)。
 
@@ -62,7 +63,7 @@
 
 ## 共通レスポンス項目
 
-[共通レスポンス項目](../../spec/common-response.md) を、次の型で作る。VolTech-gRPC 版(Rust)のコレクター(`DiffCollector`・`BadgeCollector`・`NotificationCollector`)はアプリに置いていたので、基盤には 3 つをまとめた 1 つのコレクターの口だけを置く。
+[共通レスポンス項目](../../spec/common-response.md) を、次の型で作る。`RunAsync` を通らないレスポンスの検査(`CommonResponseCheckFilter`)は [設計書 1](../common-response-and-client-filter.md)に書く。VolTech-gRPC 版(Rust)のコレクター(`DiffCollector`・`BadgeCollector`・`NotificationCollector`)はアプリに置いていたので、基盤には 3 つをまとめた 1 つのコレクターの口だけを置く。
 
 | 型 | 置き場所 | 役目 |
 | --- | --- | --- |
