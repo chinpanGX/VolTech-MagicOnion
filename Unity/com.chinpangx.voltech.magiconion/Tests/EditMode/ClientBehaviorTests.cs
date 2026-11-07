@@ -1,9 +1,11 @@
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Linq;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Grpc.Core;
+using Grpc.Core.Interceptors;
 using MagicOnion;
 using MagicOnion.Client;
 using MessagePack;
@@ -63,6 +65,71 @@ namespace VolTech.Client.Tests.EditMode
             await client.GetAsync(1);
 
             Assert.That(filter.MethodPath, Is.EqualTo("IClientBehaviorService/GetAsync"));
+        });
+
+        /// <summary>
+        /// CallInvoker の TRequest は、参照型のリクエストならその型。Marshaller で往復できる。Monitor の記録の前提(設計書 4 の A1〜A3)。
+        /// </summary>
+        [UnityTest]
+        [Description("CallInvoker の TRequest は、参照型のリクエストならその型。Marshaller で往復できる")]
+        public IEnumerator RequestOfReferenceTypeIsPassedAsIs() => UniTask.ToCoroutine(async () =>
+        {
+            var capture = new CapturingInterceptor();
+
+            await CreateCapturingClient(capture).SendAsync(new ClientBehaviorRequest { Value = 5 });
+
+            Assert.That(capture.RequestType, Is.EqualTo(typeof(ClientBehaviorRequest)));
+            Assert.That(((ClientBehaviorRequest)capture.RoundTripped).Value, Is.EqualTo(5));
+        });
+
+        /// <summary>
+        /// 引数なしの RPC の TRequest は Box&lt;Nil&gt;。
+        /// </summary>
+        [UnityTest]
+        [Description("引数なしの RPC の TRequest は Box<Nil>")]
+        public IEnumerator RequestOfNoArgumentsIsBoxOfNil() => UniTask.ToCoroutine(async () =>
+        {
+            var capture = new CapturingInterceptor();
+            invoker.Handler = _ => Task.FromResult(FakeResult.Success(MessagePackSerializer.Serialize(3, TestClients.SerializerOptions)));
+
+            await CreateCapturingClient(capture).CountAsync();
+
+            Assert.That(capture.RequestType.FullName, Does.StartWith("MagicOnion.Internal.Box`1"));
+            Assert.That(capture.RequestType.GetGenericArguments()[0], Is.EqualTo(typeof(Nil)));
+            Assert.That(ReadField(capture.RoundTripped, "Value"), Is.EqualTo(Nil.Default));
+        });
+
+        /// <summary>
+        /// 値型 1 つの RPC の TRequest は Box&lt;T&gt;。
+        /// </summary>
+        [UnityTest]
+        [Description("値型 1 つの RPC の TRequest は Box<T>")]
+        public IEnumerator RequestOfValueTypeIsBox() => UniTask.ToCoroutine(async () =>
+        {
+            var capture = new CapturingInterceptor();
+
+            await CreateCapturingClient(capture).GetAsync(5);
+
+            Assert.That(capture.RequestType.FullName, Does.StartWith("MagicOnion.Internal.Box`1"));
+            Assert.That(ReadField(capture.RoundTripped, "Value"), Is.EqualTo(5));
+        });
+
+        /// <summary>
+        /// 複数の引数の RPC の TRequest は Box&lt;DynamicArgumentTuple&gt;。引数の名前は残らない。
+        /// </summary>
+        [UnityTest]
+        [Description("複数の引数の RPC の TRequest は Box<DynamicArgumentTuple>")]
+        public IEnumerator RequestOfSeveralArgumentsIsBoxOfTuple() => UniTask.ToCoroutine(async () =>
+        {
+            var capture = new CapturingInterceptor();
+
+            await CreateCapturingClient(capture).TwoAsync("name", 5);
+
+            Assert.That(capture.RequestType.FullName, Does.StartWith("MagicOnion.Internal.Box`1"));
+            var tuple = ReadField(capture.RoundTripped, "Value");
+            Assert.That(tuple.GetType().FullName, Does.StartWith("MagicOnion.DynamicArgumentTuple`2"));
+            Assert.That(ReadField(tuple, "Item1"), Is.EqualTo("name"));
+            Assert.That(ReadField(tuple, "Item2"), Is.EqualTo(5));
         });
 
         /// <summary>
@@ -289,6 +356,88 @@ namespace VolTech.Client.Tests.EditMode
             }
         }
 
+        private static object ReadField(object value, string name)
+        {
+            return value.GetType().GetField(name).GetValue(value);
+        }
+
+        private IClientBehaviorService CreateCapturingClient(CapturingInterceptor capture)
+        {
+            return MagicOnionClient.Create<IClientBehaviorService>(
+                invoker.Intercept(capture),
+                TestClients.SerializerProvider,
+                Array.Empty<IClientFilter>(),
+                TestClients.ClientFactoryProvider);
+        }
+
+        // TRequest と、Marshaller で往復した値を捕まえる
+        private sealed class CapturingInterceptor : Interceptor
+        {
+            public Type RequestType { get; private set; }
+
+            public object RoundTripped { get; private set; }
+
+            public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+                TRequest request,
+                ClientInterceptorContext<TRequest, TResponse> context,
+                AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
+            {
+                RequestType = typeof(TRequest);
+                var serialization = new BufferSerializationContext();
+                context.Method.RequestMarshaller.ContextualSerializer(request, serialization);
+                RoundTripped = context.Method.RequestMarshaller.ContextualDeserializer(new BufferDeserializationContext(serialization.Payload));
+                return continuation(request, context);
+            }
+        }
+
+        private sealed class BufferSerializationContext : SerializationContext
+        {
+            private readonly ArrayBufferWriter<byte> writer = new();
+
+            public byte[] Payload { get; private set; }
+
+            public override IBufferWriter<byte> GetBufferWriter()
+            {
+                return writer;
+            }
+
+            public override void SetPayloadLength(int payloadLength)
+            {
+            }
+
+            public override void Complete()
+            {
+                Payload = writer.WrittenSpan.ToArray();
+            }
+
+            public override void Complete(byte[] payload)
+            {
+                Payload = payload;
+            }
+        }
+
+        private sealed class BufferDeserializationContext : DeserializationContext
+        {
+            private readonly byte[] payload;
+
+            public BufferDeserializationContext(byte[] payload)
+            {
+                this.payload = payload;
+            }
+
+            public override int PayloadLength => payload.Length;
+
+            public override byte[] PayloadAsNewBuffer()
+            {
+                return payload;
+            }
+
+            public override ReadOnlySequence<byte> PayloadAsReadOnlySequence()
+            {
+                return new ReadOnlySequence<byte>(payload);
+            }
+        }
+
         private sealed class FilterFailedException : Exception
         {
         }
@@ -369,12 +518,23 @@ namespace VolTech.Client.Tests.EditMode
         UnaryResult<int> CountAsync();
 
         UnaryResult PingAsync();
+
+        UnaryResult<ClientBehaviorReply> SendAsync(ClientBehaviorRequest request);
+
+        UnaryResult<ClientBehaviorReply> TwoAsync(string name, int value);
     }
 
     /// <summary>[MagicOnionClientGeneration] に名前を書かないインターフェース。同じアセンブリなので生成される。</summary>
     public interface INotListedService : IService<INotListedService>
     {
         UnaryResult<ClientBehaviorReply> GetAsync(int value);
+    }
+
+    [MessagePackObject]
+    public sealed class ClientBehaviorRequest
+    {
+        [Key(0)]
+        public int Value { get; set; }
     }
 
     [MessagePackObject]

@@ -21,7 +21,7 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 | `VolTech.Server` の `Transaction/` | `ITransactions`、冪等性、ゲームログ、マイグレーション | あり。共通レスポンス項目(`ICommonResponseCollector<TCommon>`・`AddCommonResponse`)もあり(2026-11-03) |
 | `VolTech.Server` の `Logging/` | `RpcLogFilter`(アクセスログと例外の変換) | あり。出力形式(ZLogger)はアプリに任せている |
 | `VolTech.Server` の `Hosting/` | `AddVoltechServer()`。フィルターの順序を固定する | あり |
-| Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | `Runtime/Client/` に `ApiCore`・`DeviceTokenProvider`・エラー処理・アカウント保存を移した(2026-10-30)。共通レスポンス項目の反映(`WithCommonResponseApplier`)と、公式の呼び方(`CreateClient<T>`・`ToResult`)は [設計書 1](designs/common-response-and-client-filter.md)。Tracing、`Runtime/Unity/` の部品(`ApiChannel` 以外)は移していない([実装設計書のクライアント](designs/implementation/client.md#移していないもの)) |
+| Unity クライアント(UPM) | `ApiCore` の MagicOnion 版 | `Runtime/Client/` に `ApiCore`・`DeviceTokenProvider`・エラー処理・アカウント保存を移した(2026-10-30)。共通レスポンス項目の反映(`WithCommonResponseApplier`)と、公式の呼び方(`CreateClient<T>`・`ToResult`)は [設計書 1](designs/common-response-and-client-filter.md)。Monitor(`Editor/`)は [設計書 4](designs/api-monitor.md)(2026-11-08)。`Runtime/Unity/` の部品(`ApiChannel` 以外)は移していない([実装設計書のクライアント](designs/implementation/client.md#移していないもの)) |
 | `Unity/VolTech.Sandbox` | 開発用の Unity 7 プロジェクト。パッケージを `file:` で参照する | あり。`Assets/Sample` にガチャと日付更新のサンプルがある(相手は `samples/VolTech.Sandbox.Server`) |
 
 ## 確かめること
@@ -43,6 +43,8 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 - [ ] Unity の IL2CPP(AOT)で、`RpcSettings` が共有インターフェースの属性(`[SkipAuth]`・`[NoSideEffects]`)をリフレクションで読めるか。コードのストリッピングで属性が消えないか
 - [x] MagicOnion のクライアントの `IClientFilter` と `CallInvoker` の動き(`next` の再呼び出し、`next` の中で `CallInvoker` まで進むこと、`Metadata` の使い回し、`WithHeaders`、例外の型、`TResponse`)。ソースジェネレーターのクライアントで確かめた(2026-11-07、EditMode の `ClientBehaviorTests`、7000.0.0a12 の Editor)
 - [x] `[MagicOnionClientGeneration]` は、書いた型のアセンブリ全体を生成の対象にする。対象でないアセンブリは `MagicOnionClient.Create<T>` が `NotSupportedException` になる。基底インターフェースから受け継いだメソッドは実装が作られず、コンパイルエラーになる(2026-11-07、同じテスト)
+- [x] ソースジェネレーターのクライアントで、`CallInvoker` の `TRequest` が参照型ならその型、引数なしが `Box<Nil>`、値型 1 つが `Box<T>`、複数の引数が `Box<DynamicArgumentTuple<...>>` になるか。なった。`Marshaller` の `ContextualSerializer`・`ContextualDeserializer` で往復でき、`Interceptor` と `ArrayBufferWriter<byte>` も使える(2026-11-08、EditMode の `ClientBehaviorTests`、7000.0.0a12 の Editor)
+- [x] Unity 7 の `DEVELOPMENT_BUILD`。定義されなくなった。`ScriptCompilationOptions.DevelopmentBuild` も使えない(2026-11-08、7000.0.0a12 のコンパイルエラーのメッセージ)。開発ビルドだけに入れる部品を作るときは、方法から決め直す
 - [x] Unity 7 で MagicOnion.Client・MessagePack・YetAnotherHttpHandler が動くか。7000.0.0a12 の Editor(CoreCLR)で、ソースジェネレーターのクライアントから h2c の Unary を呼べた(2026-10-26)。IL2CPP のプレイヤーは上の iOS の項目で確かめる。Editor の中では、NuGet で入れた gRPC ではなく Burst が同梱する gRPC 2.61.0(`Editor/Data/Tools/Burst/Client/`)が読み込まれる(アセンブリの版がどれも 2.0.0.0 のため)。Editor での確認は 2.61.0 での結果で、2.84.0 で動くかはプレイヤーのビルドで確かめる
 - [x] 使う版を決める。MagicOnion 7.11.0、MessagePack 3.1.12、YetAnotherHttpHandler 1.11.7、gRPC 2.84.0、NuGetForUnity 4.5.0(一覧は [導入](guide/getting-started.md#使う版))
 
@@ -53,7 +55,7 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 - [x] 共通レスポンス項目(`IApiResponse`)と、`player_diff`・バッジ・通知を集める仕組み(Rust 版のコレクター)。アプリが 1 つの型 `TCommon` にまとめ、レスポンスの型が `IApiResponse<TCommon>` を実装する(戻り値の型は変えない)。サーバーは `ICommonResponseCollector<TCommon>` をトランザクションごとに作り、`RunAsync` が本体の後に詰める。クライアントの反映処理は `ICommonResponseApplier<TCommon>` 1 つ(2026-11-07。[設計書 1](designs/common-response-and-client-filter.md)、[共通レスポンス項目](spec/common-response.md))
 - [ ] ログの出力形式。基盤は `ILogger` のスコープとアクセスログを出すだけで、JSON での出力(ZLogger)はアプリに任せている。基盤で決めるか
 - [ ] `StoredAccount` のシリアライズ: protobuf のまま残すか、MessagePack に移すか(移すと保存形式が変わる)。今は VolTech-gRPC 版のまま変えていない
-- [ ] Tracing(gRPC Monitor)を MessagePack で作り直すか、リリース外のツールとして割り切るか
+- [x] Tracing(gRPC Monitor)を MessagePack で作り直すか。作る(2026-11-04、[RFC](designs/foundation-direction.md))。設計と実装は [Monitor の設計書](designs/api-monitor.md)(2026-11-08)。実機の表示は後の段階
 - [ ] StreamingHub を使う場合の認証・再接続の設計(ClientFilter は Unary のみ対応)
 - [ ] Unity 7 が C# 14 / .NET 10 に対応したら、`Abstractions` の netstandard2.1 / C# 9 の制約を緩める。7.0 のアルファ版の時点では、Unity 6 と同じ C# 9 / .NET Standard 2.1 で、対応の時期は公表されていない
 

@@ -6,7 +6,8 @@
         "UnityEditor.TestRunner",
         "UniTask",
         "VolTech.Server.Abstractions",
-        "VolTech.MagicOnion.Client"
+        "VolTech.MagicOnion.Client",
+        "VolTech.MagicOnion.Client.Editor"
     ],
     "includePlatforms": [
         "Editor"
@@ -18,6 +19,7 @@
         "nunit.framework.dll",
         "Google.Protobuf.dll",
         "Grpc.Core.Api.dll",
+        "Grpc.Net.Client.dll",
         "MagicOnion.Abstractions.dll",
         "MagicOnion.Client.dll",
         "MagicOnion.Shared.dll",

@@ -109,7 +109,7 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
   * サーバーとクライアントのアプリの書き方を MagicOnion の公式に合わせる。クライアントは共有インターフェースを直接呼ぶ(2026-11-07 に追加。[設計書 1](common-response-and-client-filter.md))
   * 運用ログを JSON で出し、Cloud Logging とトレースに相関させる。サーバーの計測は OpenTelemetry .NET の標準の計装で拾う
   * ゲームログの出力先を選べるようにし、`RunAsync` の外から書く手段を足す
-  * Monitor を作る: 全通信(トークンの発行を含む)を記録し(記録の場所は設計書 4 で決める。`IDeviceService` は基盤のフィルターを通らない)、Editor のウィンドウと実機の通信の表示を gRPC 版と同じ使い心地にする。Body は MessagePack を JSON に変えて出す(grpcurl に貼れる利点は無くなる)
+  * Monitor を作る: `ApiChannel.CreateCallInvoker` の `CallInvoker` で全通信(トークンの発行を含む)を記録し、Editor のウィンドウを gRPC 版と同じ使い心地にする。Body は MessagePack を項目名付きの JSON に変えて出す(grpcurl に貼れる利点は無くなる)。実機の通信の表示は後の段階に分けた([設計書 4](api-monitor.md)、2026-11-07)
 * **Out-of-Scope Non-Goals:**
   * 強制アップデートの判定、メンテナンスの判定、アカウント停止、シャーディング
   * StreamingHub、マスターデータの配信、MasterDataTools(`docs/spec/index.md` のスコープ外のまま)
@@ -149,5 +149,5 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 4. 設計書 2: ログと計測(JSON の出力、相関、項目名の取り決め、OpenTelemetry の標準の計装、Cloud Logging の量の見積もり)
 5. 設計書 3: ゲームログの出力先の選択と、`RunAsync` の外から書く API
 6. 設計書 5(小さい): `StoredAccount` を MessagePack に移し、`RpcErrorDetails` の読み取り方を決める(Google.Protobuf のままか、自前か)。Monitor の `ErrorInfo` の表示も同じ読み取りを使うので、設計書 4 より先に置く
-7. 設計書 4: Monitor(通信の記録、記録の置き場所、Editor のウィンドウ、実機からの送信)
+7. 設計書 4: Monitor(通信の記録、記録の置き場所、Editor のウィンドウ)。オーナーの判断で設計書 2・3・5 より先に進めた([api-monitor.md](api-monitor.md)、2026-11-08)。実機からの送信は後の段階
 8. 後回し: `Runtime/Unity/` の部品、テスト用の偽物をアプリに配る形

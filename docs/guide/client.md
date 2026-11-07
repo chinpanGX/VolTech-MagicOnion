@@ -82,10 +82,21 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 
 アプリのテストでは、`IGachaService` を実装した偽物をそのまま使える。失敗を返すときは、`FakeRpcErrors.ApiFailureResult<T>` で作った `UnaryResult<T>` を返す。偽物のメソッドから同期で例外を投げると、`ToResult` に届かない。
 
+## Monitor
+
+通信のリクエストとレスポンスを 1 件ずつ見る Editor のウィンドウ。メニューの **Window > VolTech MagicOnion > Monitor** で開く。アプリは何も書かなくても記録される。ウィンドウを閉じていても記録は続く。
+
+- 記録するのは `ApiChannel.CreateCallInvoker` で作った `CallInvoker` の通信。トークンの発行も入る。`GrpcChannel` をそのままクライアントに渡した通信は記録されない
+- 記録は Editor のメモリーにだけあり、プレイヤーには入らない。Play を止めても見返せて、次の Play で消える(Clear on Play)
+- `authorization`、`secretKey`、`AccessToken` はそのまま見える。Editor から本番のサーバーにつなぐと、本番の値も見える。画面の共有とスクリーンショット、Copy に気を付ける
+- Body は受信したバイト列そのものではなく、クライアントの型で読み直した値を JSON にしたもの。古い型は知らない項目を出さない。読めない通信は Body が空になる。表に無い型があると、Body 全体が項目名の無い配列になる
+- 複数の引数の RPC の Body は配列になる。引数の名前は残らない
+
 ## VolTech-gRPC 版から移すとき
 
 - `ErrorCode`・`ReservedErrors` は `VolTech.Server.Abstractions` の型になった(`using VolTech.Server.Abstractions;`)。errors.toml から生成していた業務エラーは、アプリの共有コードに C# の定数で書く
 - 生成していたラッパーは無くなった。共有インターフェースを上の形で直接呼ぶ
 - `DeviceTokenProvider` には `CallInvoker` ではなく `IDeviceService` のクライアントを渡す
 - 3 つの反映処理は `ICommonResponseApplier<TCommon>` 1 つになった。レスポンス(`IMessage`)ではなく `Common`(アプリの `TCommon`)を受け取る。`IHasPlayerDiff` などでレスポンスから取り出す処理は要らない
-- gRPC Monitor、`FakeCallInvoker`、`UnityAccountStore` などの Unity 用の部品は、まだ無い
+- gRPC Monitor は [Monitor](#monitor) になった。実機の表示はまだ無い
+- `FakeCallInvoker`、`UnityAccountStore` などの Unity 用の部品は、まだ無い
