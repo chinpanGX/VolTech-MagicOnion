@@ -240,6 +240,106 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 
 ヘッダーの名前と値、ErrorInfo、予約エラー、冪等性の意味、`Common` が null なら変化なしという意味、再送で同じ `Common` を返すこと、`ICommonResponseCollector<TCommon>`・`AddCommonResponse`・`TxContext.GetCollector`。
 
+## Alternatives Considered
+
+### 共通レスポンス項目の詰め方
+
+#### Alternative A: サービスフィルターで `Common` を詰める
+
+*   **Pros**: MagicOnion の流儀に合う。`RunAsync` を通らない RPC でも詰められる
+*   **Cons**: フィルターは本体の外で動くので、保存とコミットの後になる
+*   **Reason for Rejection**: 保存するレスポンスに `Common` が入らず、再送で同じ `Common` を返せない。冪等性の取り決めが崩れる
+
+### `Common` が詰められない形への対処(Q1)
+
+#### Alternative B: フィルターで実行時に検査する
+
+*   **Pros**: 部品は小さい。手書きのハンドラーのまま使える。`ServiceBase<T>` を直接継承したサービスも検出できる。`ServiceContext.GetRawResponse()` で読める
+*   **Cons**: 動かしていない RPC では気づかない。検出はコミットの後になる
+*   **Reason for Rejection**: オーナーは、失敗を見つけるより、書けない形にすることを選んだ
+
+#### Alternative C: 全 RPC で `RunAsync` を実行時に必須にする
+
+*   **Pros**: トランザクションの外の書き込みも見つかる
+*   **Cons**: DB を使わない RPC を外す属性が要る。公開 API が増える
+*   **Reason for Rejection**: 生成で全 RPC が `RunAsync` を通るので、目的が重なる
+
+#### Alternative D: Roslyn アナライザーで検出する
+
+*   **Pros**: 実行しなくても見つかる。実行時のコストが無い
+*   **Cons**: `RunAsync` の外で詰め替える形は、`RunAsync` を呼んでいるので見逃す。別メソッドに分けた呼び出しも追えない
+*   **Reason for Rejection**: 主な失敗の形を検出できない
+
+#### Alternative E: 検査しない
+
+*   **Pros**: 部品が増えない
+*   **Cons**: 破ると、エラーなしにクライアントの表示がずれる
+*   **Reason for Rejection**: 通知は取り直せず、原因にも気づきにくい
+
+### 生成の範囲
+
+#### Alternative F: サーバーだけ生成する
+
+*   **Pros**: Unity にジェネレーターの DLL を配らなくてよい。`ApiCore` とラッパーの変更が減る
+*   **Cons**: サーバーだけ生成になり、作り方がそろわない。属性のリフレクションの未確認の項目が残る
+*   **Reason for Rejection**: オーナーは両側の作り方をそろえることを選んだ。クライアントの生成の手間は、サーバーの生成を作れば小さい
+
+#### Alternative G: 参照先まで走査して、全部を自動で生成する
+
+*   **Pros**: 属性を書かなくてよい
+*   **Cons**: `IDeviceService` を除外する仕組みが要る。走査は重い。Unity とサーバーで見えるアセンブリが違う
+*   **Reason for Rejection**: MagicOnion と同じ、属性で明示する形を選んだ
+
+#### Alternative H: トランザクションを開かない RPC を属性で外す
+
+*   **Pros**: DB を使わない RPC も生成の仕組みのまま書ける
+*   **Cons**: 属性・`RpcSettings`・ジェネレーターの分岐が増える。Uta の 7 RPC に使うものが無い
+*   **Reason for Rejection**: 使う RPC が無い。必要になればサービスを手書きにできる
+
+### 保存済みのレスポンス(Q2)
+
+#### Alternative I: 保存の行に版を持たせる
+
+*   **Pros**: 値がずれて読める場合も防げる
+*   **Cons**: 列・マイグレーション・設定が増える。上げ忘れると意味が無い。合わないときの結果は同じ失敗
+*   **Reason for Rejection**: 1 プレイヤー最新の 1 件だけで、起きるのはデプロイをまたいだ再送だけ。失敗の結果も変わらない
+
+### クライアントの反映処理(Q3)
+
+#### Alternative J: VolTech-gRPC 版と同じ 3 つのまま残す
+
+*   **Pros**: 順序を基盤が保証する。名前がそろう。実装済みのコードとテストをそのまま使える
+*   **Cons**: 基盤が `TCommon` の中身の区別を持つ。`TCommon` の食い違いの検査が残る
+*   **Reason for Rejection**: 基盤は中身を知らない前提なので、順序はアプリの取り決めにする。RFC の規則でも、gRPC 版にそろえるのは最上位ではない
+
+### ヘッダーの付け方(Q4)
+
+#### Alternative K: `WithOptions` のまま残す
+
+*   **Pros**: 変更が無い。受け渡しの仕組みが要らない。Monitor はフィルターからヘッダーを読める
+*   **Cons**: 公式の書き方から外れたまま
+*   **Reason for Rejection**: オーナーは公式の書き方に合わせることを選んだ
+
+#### Alternative L: 固定の値だけフィルターに移す
+
+*   **Pros**: `AsyncLocal` が要らない。同期開始に依存しない
+*   **Cons**: ヘッダーを付ける場所が 2 か所に分かれる
+*   **Reason for Rejection**: オーナーは全部のヘッダーをフィルターで付けることを選んだ
+
+#### Alternative M: トークンの取得もフィルターに移す
+
+*   **Pros**: 認証の処理がフィルターに 1 本化される
+*   **Cons**: 締め切りはフィルターから変えられないので、トークン取得の時間が RPC の締め切りを消費する。使ったトークンを `ApiCore` へ返す経路が要る。`ACCOUNT_*` の例外の型がフィルターを通る
+*   **Reason for Rejection**: 締め切りの動きが変わる。レビューで指摘され、`ApiCore.SendOnceAsync` で確かめた
+
+### アプリのフィルター(Q5)
+
+#### Alternative N: アプリがフィルターを基盤より内側に足せる
+
+*   **Pros**: アプリ固有の処理を基盤を直さずに足せる
+*   **Cons**: 公開 API が増える。アプリのフィルターが再試行や打ち切りをすると、順番待ち・再認証・冪等性の前提を崩せる
+*   **Reason for Rejection**: 今の使い道が無い。必要になったら足す
+
 ## Risks
 
 *   **本体は全部トランザクションの中で動く**: 接続と、冪等性の対象なら `last_responses` の行ロックを持ったまま動く。本体で外部 I/O をしない(Cloud SQL の接続上限に関わる。RFC の Analysis 10)。外で処理が要る RPC が出たら、そのサービスを手書きにする。Uta の 7 RPC は今も全部を `RunAsync` の中で動かしている
