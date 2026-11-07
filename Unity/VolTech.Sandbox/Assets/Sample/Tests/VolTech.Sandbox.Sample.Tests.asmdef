@@ -1,0 +1,33 @@
+{
+    "name": "VolTech.Sandbox.Sample.Tests",
+    "rootNamespace": "VolTech.Sandbox.Sample",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UniTask",
+        "VolTech.Server.Abstractions",
+        "VolTech.MagicOnion.Client",
+        "VolTech.Sandbox.Sample"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Google.Protobuf.dll",
+        "Grpc.Core.Api.dll",
+        "Grpc.Net.Client.dll",
+        "MagicOnion.Abstractions.dll",
+        "MagicOnion.Client.dll",
+        "MagicOnion.Shared.dll",
+        "MagicOnion.Serialization.MessagePack.dll",
+        "MessagePack.dll",
+        "MessagePack.Annotations.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

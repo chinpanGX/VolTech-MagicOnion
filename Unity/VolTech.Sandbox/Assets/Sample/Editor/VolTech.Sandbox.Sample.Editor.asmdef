@@ -1,0 +1,31 @@
+{
+    "name": "VolTech.Sandbox.Sample.Editor",
+    "rootNamespace": "VolTech.Sandbox.Sample",
+    "references": [
+        "UniTask",
+        "VolTech.Server.Abstractions",
+        "VolTech.MagicOnion.Client",
+        "VolTech.Sandbox.Sample"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Google.Protobuf.dll",
+        "Grpc.Core.Api.dll",
+        "Grpc.Net.Client.dll",
+        "MagicOnion.Abstractions.dll",
+        "MagicOnion.Client.dll",
+        "MagicOnion.Shared.dll",
+        "MagicOnion.Serialization.MessagePack.dll",
+        "MessagePack.dll",
+        "MessagePack.Annotations.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
