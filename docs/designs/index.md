@@ -11,3 +11,4 @@ egm のプラグイン(`/egm:egm-*`)で書いた設計書を置く。機能ご�
 ## 検討中
 
 - [基盤の方針と進める順番](foundation-direction.md): gRPC 版から 4 つを除いた機能をそろえる方針、判断の規則(取り決めは変えない、迷ったら MagicOnion のベストプラクティス)、設計書を書く順番。egm のブレストの結果(RFC)
+- [共通レスポンス項目とクライアントのヘッダー付与](common-response-and-client-filter.md): 共通レスポンス項目と `IClientFilter` への移行、サーバーのハンドラーとクライアントのラッパーの生成を、Transaction・`ApiCore` と一緒に見直す。下書き
