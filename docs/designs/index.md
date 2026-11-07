@@ -8,6 +8,7 @@ egm のプラグイン(`/egm:egm-*`)で書いた設計書を置く。機能ご�
 
 - [共通レスポンス項目とクライアントの呼び方](common-response-and-client-filter.md): 共通レスポンス項目の反映を 1 つにまとめ、アプリの書き方を MagicOnion の公式に合わせる。`ApiCore` の処理は `IClientFilter` から動かし、ヘッダーと締め切りは包んだ `CallInvoker` で付ける。2026-11-07 に承認
 - [Sandbox のガチャと日付更新のサンプル](sandbox-gacha-date-sample.md): 基盤の使い方を動くもので見せる。ガチャの画面、サンプルサーバー、サーバーの時刻を進める Editor のウィンドウ。2026-11-07 に承認
+- [Monitor(通信を 1 件ずつ見る Editor のウィンドウ)](api-monitor.md): RFC の設計書 4。`ApiChannel` の `CallInvoker` で全部の通信を記録し、Body は項目名付きの JSON で見せる。gRPC 版と同じ構成のウィンドウで、実機の表示は後の段階に分ける。2026-11-08 に承認
 
 ## 検討中
 

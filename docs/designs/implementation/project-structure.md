@@ -17,6 +17,7 @@ VolTech-MagicOnion/
     ├─ com.chinpangx.voltech.magiconion/
     │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
     │   ├─ Runtime/Client/             ApiCore など + asmdef
+    │   ├─ Editor/                     Monitor(通信の記録とウィンドウ)+ asmdef。Editor だけに入る
     │   └─ Tests/EditMode/             Runtime/Client のテスト + asmdef
     ├─ Directory.Build.props、Directory.Packages.props  空。Unity が作る csproj にリポジトリ直下の設定を効かせない
     └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する。Assets/E2E に PlayMode テスト、Assets/Sample にガチャのサンプル
@@ -62,7 +63,7 @@ DB のルールのテストは、名前空間を並べず「`Auth/`・`Transacti
 
 ## 共有のしかた
 
-- Unity から参照するのは `Abstractions` と `Runtime/Client` だけにする。サーバーのコードは Unity パッケージの外に置くので、Unity に入らない
+- Unity から参照するのは `Abstractions` と `Runtime/Client` だけにする(`Editor/` の Monitor は Editor だけに入り、アプリは参照しない)。サーバーのコードは Unity パッケージの外に置くので、Unity に入らない
 - `Abstractions` はソースで共有する。`.cs` の実体は UPM パッケージの中(asmdef 付き)に置き、サーバーの csproj はそのフォルダーを `Compile Include` で読み込む。UPM パッケージはパッケージの外のファイルを含められないので、実体はパッケージ側に置く。DLL を配る形と違い、サーバーと Unity のどちらからでも定義へ飛べる
 - `Abstractions` は MagicOnion.Abstractions と MessagePack.Annotations を参照する(`IDeviceService` と結果の型をクライアントと共有するため)。Unity では NuGetForUnity で入れた DLL を asmdef が自動で参照する
 - Unity 7 のアナライザーは、static フィールドを持つ型に Unity の属性(`AutoStaticsCleanup` など)を求める(UAL0010)。`Abstractions` は Unity を参照できないので、static フィールドは定数と、変えられない値(`ReservedErrors` の `ErrorCode`)だけにする

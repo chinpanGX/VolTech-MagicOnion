@@ -14,7 +14,7 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | `DeviceTokenProvider` の通信部分 | 差し替え | 生成された `DeviceGrpc` を MagicOnion の `IDeviceService` に替える |
 | `ApiServiceBase` と生成ラッパー | 不要 | アプリが共有インターフェースを直接呼ぶ |
 | `RpcSettings` | 差し替え | 共有インターフェースの属性から設定を読む |
-| Tracing(gRPC Monitor) | 要確認 | protobuf メッセージの記録が前提だと思われる(未読) |
+| Tracing(gRPC Monitor) | 作り直し | [Monitor の設計書](../api-monitor.md) |
 | `protoc-gen-voltech-grpc`(ラッパー生成)、buf の設定、`Runtime/Generated/` の RPC 部分 | 不要 | proto を使わなくなる。エラーコードも C# の定数を共有するので生成しない |
 
 `Google.Protobuf` への依存は残す。エラー詳細(`google.rpc.Status`)の解析とアカウント保存で使っているため。
@@ -36,16 +36,15 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | `Internal/`(`ErrorConverter`・`RpcErrorDetails`・`RpcErrorInfo`・`AesHmacCipher`・`SafeFile`) | 同じ名前 | `ErrorMetadataKeys.Action`・`ApiHeaders.ErrorDetailsTrailer` を使う |
 | `Clock/`・`ErrorHandling/`・`Hooks/`(`IApiActivityHandler`・`IApiLogger`・`ITokenProvider`)・`AppVersion` | 同じ名前 | なし |
 | `Testing/FakeRpcErrors`・`Testing/InMemoryAccountStore` | 同じ名前 | `FakeRpcErrors` に `ApiFailureResult<T>` を足した |
-| `Runtime/Unity/ApiChannel` | `ApiChannel` | `AddInterceptor` と、Interceptor を付ける CallInvoker を外した(Tracing のためだけの仕組みで、static の可変なフィールドを持つため)。`CreateCallInvoker` はチャンネルの CallInvoker をそのまま返す |
+| `Runtime/Unity/ApiChannel` | `ApiChannel` | Interceptor の一覧を、Monitor が付ける 1 つの `SetInterceptor` に変えた。`CreateCallInvoker` は Interceptor があれば付けて返す。プレイヤーには付ける側が入らないので、チャンネルの CallInvoker をそのまま返す([Monitor の設計書](../api-monitor.md)) |
 
-static フィールドは定数と変えられない値だけにした(Unity 7 のアナライザーの UAL0010。[プロジェクト構成](project-structure.md#共有のしかた))。VolTech-gRPC 版の `ApiError` の空の辞書と `DeviceTokenProvider` の `refreshMargin` は、呼ぶたびに作るか定数にした。`Generated/AccountStore.cs` は protoc の生成物のまま static フィールドを持つ。
+static フィールドは定数と変えられない値だけにした。例外は Monitor のための `ApiChannel`・`ApiTraceStore`・`ApiMonitorWindow` で、`[NoAutoStaticsCleanup]` を付ける(Unity 7 のアナライザーの UAL0010。[プロジェクト構成](project-structure.md#共有のしかた))。VolTech-gRPC 版の `ApiError` の空の辞書と `DeviceTokenProvider` の `refreshMargin` は、呼ぶたびに作るか定数にした。`Generated/AccountStore.cs` は protoc の生成物のまま static フィールドを持つ。
 
 ### 呼び方と共通レスポンス項目の反映
 
 [設計書 1](../common-response-and-client-filter.md)に書く。
 
 ### 移していないもの
-- Tracing(`Runtime/Tracing/`、`Editor/` の gRPC Monitor): 要確認のため
 - `Testing/FakeCallInvoker`・`FakeCall`: アプリ向けには移していない。アプリのテストは共有インターフェースを実装した偽のクライアントで書き、失敗は `FakeRpcErrors.ApiFailureResult<T>` で返す。基盤のテストは `Tests/EditMode/Support/FakeCallInvoker.cs` で本物の `MagicOnionClient` を動かす。MagicOnion は内部の型で通信するので、応答は MessagePack のバイト列で渡す
 - `Runtime/Unity/` のうち `ApiChannel` 以外(`UnityAccountStore`・`ServerClockResetter`・`UnityApiLogger`・`UnityAppVersion`): この表に載っておらず、置き場所(`Runtime/Client/` に入れるか、Unity 用の asmdef を分けるか)を決めていない
 - `Runtime/Generated/` の RPC 部分(`DeviceGrpc`・`Device`・`AuthOptions`)と `Runtime/Client/Errors/ReservedErrors.cs`(生成物): 不要
@@ -59,6 +58,6 @@ static フィールドは定数と変えられない値だけにした(Unity 7 �
 - 足した: `ApiCoreTests`。本物の `MagicOnionClient` と `FakeCallInvoker` で、ヘッダー・締め切り・キャンセル・再認証・再送・順番待ち・共通エラーハンドラー・`ToResult`・`WithHandledCodes` を確かめる
 - 足した: `CommonResponseTests`。反映処理に `Common` を渡すこと、`Common` が null なら呼ばないこと、反映の例外を `CLIENT_ERROR` として共通エラーハンドラーに渡して失敗を返すこと(送り直さない)、古いセッションのレスポンスは反映しないこと
 - 足した: `ErrorPolicyProviderTests`。`ReservedErrors` の公開フィールドをリフレクションですべて列挙し、どれにも既定の action があり、[予約エラーの表](../../spec/errors.md#予約エラー)と同じであることを確かめる。予約エラーを足して既定の action を入れ忘れると失敗する
-- 移していない: `ApiTraceTests`(Tracing)
+- 作り直した: `ApiTraceTests`・`ApiTraceJsonTests`。[Monitor の設計書](../api-monitor.md)の記録と JSON を確かめる
 
 Sandbox(Unity 7000.0.0a12)でコンパイルが通り、EditMode の 85 件がすべて通った(2026-11-07、`unity test <Sandbox のパス> --mode EditMode`)。パッケージのコードに UAL0010 の警告は出なかった。サーバーを相手にした呼び出し(YetAnotherHttpHandler でエラーのトレーラーが届くか、IL2CPP)はまだ確かめていない

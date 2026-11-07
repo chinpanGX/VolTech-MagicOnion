@@ -6,7 +6,7 @@ Oct 23, 2026 · @Shota
 
 ## 目的と前提
 
-新しいリポジトリ VolTech-MagicOnion で、サーバー基盤と Unity クライアントを C# + MagicOnion で提供する。proto + Rust の VolTech-gRPC と MasterDataTools は今の形のまま残し、3つは互いに参照しない。個人開発の 1 アプリのための基盤なので、Rust 版の機能のうち運用のための機能は落とし、ゲームを動かすのに要る機能だけを C# で再現する。Unity クライアントとの取り決め(エラー形式・ヘッダー)は変えない。
+新しいリポジトリ VolTech-MagicOnion で、サーバー基盤と Unity クライアントを C# + MagicOnion で提供する。proto + Rust の VolTech-gRPC と MasterDataTools は今の形のまま残し、3つは互いに参照しない。個人開発の 1 アプリのための基盤なので、Rust 版の機能のうち運用の判定(強制アップデート、メンテナンス、アカウント停止、シャーディング)は落とし、ゲームを動かすのに要る機能と、ログ・Monitor を C# で再現する。Unity クライアントとの取り決め(エラー形式・ヘッダー)は変えない。
 
 - 確定: MasterMemory、MagicOnion、MessagePack(MasterMemory と MagicOnion が前提にする)
 - 確定: Unity は 7 系。基盤の開発用プロジェクトもアプリも Unity 7 で作り、Unity 6 には対応しない
