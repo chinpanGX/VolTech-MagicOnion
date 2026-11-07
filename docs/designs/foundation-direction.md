@@ -103,19 +103,19 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 * **In-Scope Goals:**
   * 作り終えた部分は、実害(バグ、AOT で動かない、保守の手間)があるところと、下の項目で触るところだけを直す。ベストプラクティスは、そのとき書き方や構造で迷った場合の決め手にする
   * クライアントとの取り決め(ステータスと ErrorInfo、ヘッダー名、予約エラー、冪等性の意味)を「変えないもの」として、ベストプラクティスより上に置く
-  * 確かめていない Unity の項目(IL2CPP・AOT・トレーラー)を、設計し直す前に確かめる
-  * クライアントのヘッダー付与を `IClientFilter` に移す(基準 1 から外れている唯一の大きな点)
+  * 確かめていない Unity の項目(IL2CPP・AOT・トレーラー)を、設計し直す前に確かめる。ただし設計書 1 では、IL2CPP の確認を前提にしないと決めた(2026-11-07。設計書 1 の Q8)
+  * クライアントの共通の処理を `IClientFilter` に移す(基準 1 から外れている唯一の大きな点)。ヘッダーは、`Metadata` の使い回しのため、基盤が包む `CallInvoker` で付ける([設計書 1](common-response-and-client-filter.md))
   * 共通レスポンス項目を、Transaction と `ApiCore` と同じ単位で見直す
-  * 共有インターフェースから、サーバーの基底クラスとクライアントのラッパーをソースジェネレーターで生成する(2026-11-07 に追加。[設計書 1](common-response-and-client-filter.md))
+  * サーバーとクライアントのアプリの書き方を MagicOnion の公式に合わせる。クライアントは共有インターフェースを直接呼ぶ(2026-11-07 に追加。[設計書 1](common-response-and-client-filter.md))
   * 運用ログを JSON で出し、Cloud Logging とトレースに相関させる。サーバーの計測は OpenTelemetry .NET の標準の計装で拾う
   * ゲームログの出力先を選べるようにし、`RunAsync` の外から書く手段を足す
-  * Monitor を作る: `IClientFilter` で全通信(トークンの発行を含む)を記録し、Editor のウィンドウと実機の通信の表示を gRPC 版と同じ使い心地にする。Body は MessagePack を JSON に変えて出す(grpcurl に貼れる利点は無くなる)
+  * Monitor を作る: 全通信(トークンの発行を含む)を記録し(記録の場所は設計書 4 で決める。`IDeviceService` は基盤のフィルターを通らない)、Editor のウィンドウと実機の通信の表示を gRPC 版と同じ使い心地にする。Body は MessagePack を JSON に変えて出す(grpcurl に貼れる利点は無くなる)
 * **Out-of-Scope Non-Goals:**
   * 強制アップデートの判定、メンテナンスの判定、アカウント停止、シャーディング
   * StreamingHub、マスターデータの配信、MasterDataTools(`docs/spec/index.md` のスコープ外のまま)
   * サーバーの状態の設定ファイル(`server_status.toml`)の読み直し。主な用途がメンテナンスと強制アップデートで、`GameDay` は `IOptionsMonitor` で足りている
   * MagicOnion 用の OpenTelemetry の連携を自分で作ること
-  * `FakeCallInvoker` の置き換え(すでに共有インターフェースの偽物で済んでいる)
+  * `FakeCallInvoker` の置き換え(すでに共有インターフェースの偽物で済んでいる)。設計書 1 では基盤のテストの中だけで、本物のクライアントを通すための `FakeCallInvoker` を作る
   * 反映処理の登録忘れを起動時に調べる仕組み(gRPC 版にも無い)
   * 当面の対象外: `Runtime/Unity/` の部品のうち Uta が使わないもの
 
@@ -145,7 +145,7 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 
 1. 確かめていない Unity の項目を確かめる。最優先は YetAnotherHttpHandler で `grpc-status-details-bin` が届くか(取り決めを変えないので前提になる)。残りは iOS の AOT、フォーマッターの生成、属性の読み取り(Windows の IL2CPP で呼べることは確かめ済み)
 2. 変えないもの(クライアントとの取り決め)を `docs/spec/` で固める
-3. 設計書 1: クライアントのヘッダー付与を `IClientFilter` に移す。共通レスポンス項目と Transaction・`ApiCore` を一緒に見直す。RPC のコード生成も含める
+3. 設計書 1: `ApiCore` の処理を `IClientFilter` に移し、アプリの書き方を公式に合わせる。共通レスポンス項目と Transaction・`ApiCore` を一緒に見直す
 4. 設計書 2: ログと計測(JSON の出力、相関、項目名の取り決め、OpenTelemetry の標準の計装、Cloud Logging の量の見積もり)
 5. 設計書 3: ゲームログの出力先の選択と、`RunAsync` の外から書く API
 6. 設計書 5(小さい): `StoredAccount` を MessagePack に移し、`RpcErrorDetails` の読み取り方を決める(Google.Protobuf のままか、自前か)。Monitor の `ErrorInfo` の表示も同じ読み取りを使うので、設計書 4 より先に置く

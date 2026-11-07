@@ -6,7 +6,7 @@ egm のプラグイン(`/egm:egm-*`)で書いた設計書を置く。機能ご�
 
 ## 承認済み
 
-- [共通レスポンス項目とクライアントのヘッダー付与](common-response-and-client-filter.md): 共通レスポンス項目と `IClientFilter` への移行、サーバーのハンドラーとクライアントのラッパーの生成を、Transaction・`ApiCore` と一緒に見直す。2026-11-07 に承認。実装の前に A1〜A6 を確かめる
+- [共通レスポンス項目とクライアントの呼び方](common-response-and-client-filter.md): 共通レスポンス項目の反映を 1 つにまとめ、アプリの書き方を MagicOnion の公式に合わせる。`ApiCore` の処理は `IClientFilter` から動かし、ヘッダーと締め切りは包んだ `CallInvoker` で付ける。2026-11-07 に承認
 
 ## 検討中
 
