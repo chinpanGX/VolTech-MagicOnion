@@ -11,6 +11,7 @@ proto と Rust サーバーで同じ役割を果たす [VolTech-gRPC](https://gi
 | `tests/` | テスト |
 | `Unity/com.chinpangx.voltech.magiconion/` | Unity クライアントの UPM パッケージ(共有する型と `ApiCore`。共通レスポンス項目の反映を含む) |
 | `Unity/VolTech.Sandbox/` | パッケージを確かめるための開発用 Unity プロジェクト。Unity 7(7000.0.0a12)で開く |
+| `samples/VolTech.Sandbox.Server/` | Sandbox のガチャと日付更新のサンプルの相手のサーバー |
 | `docs/` | 仕様書・実装設計書・利用ガイド |
 
 サーバー側はできている。Unity クライアントは `ApiCore` まで移した。計画と進み具合は [docs/index.md](docs/index.md)。
@@ -33,7 +34,21 @@ Unity のクライアントが本物のサーバーと通信できることは�
 
 ```
 dotnet run --project tests/VolTech.E2E.Server
-unity test Unity/VolTech.Sandbox --mode PlayMode
+unity test Unity/VolTech.Sandbox --mode PlayMode --filter VolTech.Sandbox.E2E
+```
+
+### Sandbox のサンプル
+
+ガチャと、サーバーの時刻を進めて日付を変える流れを、動かして見られる。Docker が要る。
+
+```
+dotnet run --project samples/VolTech.Sandbox.Server --no-launch-profile
+```
+
+Sandbox で `Assets/Sample/Sample.unity` を開いて Play モードにする。サーバーの時刻は、メニューの **VolTech > Server Clock** のウィンドウで進める。Play 中にサーバーを再起動したら、Play もやり直す。サンプルのテストは次のとおり。
+
+```
+unity test Unity/VolTech.Sandbox --mode PlayMode --filter VolTech.Sandbox.Sample
 ```
 
 使うライブラリの版は [利用ガイドの使う版](docs/guide/getting-started.md#使う版)。Sandbox もこの版で入れている。

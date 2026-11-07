@@ -358,7 +358,7 @@ public sealed class SampleSession : IDisposable
 
 *   `Shared/IServerClockService.cs`、`Shared/ISampleGachaService.cs`、`Shared/SampleTypes.cs`、`Shared/SampleErrors.cs`
 *   `VolTech.Sandbox.Sample.asmdef`
-*   `SampleClients.cs`: `E2EClients.cs` を写し、`IServerClockService`・`ISampleGachaService`・`IDeviceService` を指定する。`Address` の定数と `CreateClockClient(CallInvoker)` もここに置く
+*   `SampleClients.cs`: `E2EClients.cs` を写し、`ISampleGachaService`・`IDeviceService` を指定する。`Address` の定数と `CreateClockClient(CallInvoker)` もここに置く
 *   `SampleSetup.cs`、`SampleSession.cs`、`SamplePlayer.cs`、`SampleCommonApplier.cs`
 *   `SampleUi.cs`、`SampleErrorView.cs`、`SampleNavigator.cs`、`SampleGame.cs`
 *   `Sample.unity`: `SampleGame` を付けた GameObject だけのシーン。Build Settings には入れない
@@ -426,3 +426,14 @@ unity test Unity/VolTech.Sandbox --mode PlayMode --filter VolTech.Sandbox.Sample
 *   Play モードでないとき、ウィンドウのボタンが押せない
 
 **既存のテスト**: dotnet と EditMode が通ること、E2E の PlayMode が `--filter VolTech.Sandbox.E2E` で 12 件通ることを確かめる。
+
+### 実装で確かめた結果
+
+2026-11-07 に、PlayMode の `SampleFlowTests` 4 件が通った。E2E の 12 件も `--filter VolTech.Sandbox.E2E` で通った。
+
+使い捨てのテストで `Sample.unity` を読み込み、`Button.onClick` を呼んで、CUJ 1〜3 の画面の流れも確かめた。このテストはリポジトリに入れていない。本物のマウスの入力と、Server Clock ウィンドウはまだ確かめていない([チェックリスト](../index.md#確かめること))。
+
+実装で変えたところは次のとおり。
+
+*   `SampleUi` は `Camera` も作る。シーンは `SampleGame` の GameObject だけなので、カメラが無いと Game ビューに警告が出る
+*   `IServerClockService` は `SampleClients` と同じアセンブリにあるので、`[MagicOnionClientGeneration]` には `ISampleGachaService` と `IDeviceService` だけを書く

@@ -7,6 +7,8 @@ VolTech-MagicOnion/
 ├─ src/
 │   ├─ VolTech.Server.Abstractions/    csproj だけ。ソースは Unity パッケージ側を読み込む
 │   └─ VolTech.Server/                 サーバー側の全部
+├─ samples/
+│   └─ VolTech.Sandbox.Server/         Sandbox のサンプルの相手のサーバー
 ├─ tests/
 │   ├─ VolTech.Server.Abstractions.Tests/
 │   ├─ VolTech.Server.Tests/           単体テストと結合テスト(Testcontainers)
@@ -17,7 +19,7 @@ VolTech-MagicOnion/
     │   ├─ Runtime/Client/             ApiCore など + asmdef
     │   └─ Tests/EditMode/             Runtime/Client のテスト + asmdef
     ├─ Directory.Build.props、Directory.Packages.props  空。Unity が作る csproj にリポジトリ直下の設定を効かせない
-    └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する。Assets/E2E に PlayMode テスト
+    └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する。Assets/E2E に PlayMode テスト、Assets/Sample にガチャのサンプル
 ```
 
 `VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。NuGet の版は、リポジトリ直下の `Directory.Packages.props` で一か所に固定する(推移的な依存も含む)。
