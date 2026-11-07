@@ -8,5 +8,8 @@ namespace VolTech.Server.Internal
         public const string GameDate = "voltech.game-date";
         public const string AuthContext = "voltech.auth";
         public const string RpcLog = "voltech.rpc-log";
+
+        /// <summary>ITransactions.RunAsync が返したレスポンス。CommonResponseCheckFilter が読む。</summary>
+        public const string RunResponse = "voltech.run-response";
     }
 }

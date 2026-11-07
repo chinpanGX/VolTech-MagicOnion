@@ -49,7 +49,7 @@ namespace VolTech.Server.Transaction
                 var response = await handler(readOnlyContext);
                 await FillCommonResponseAsync(readOnlyContext, response);
                 await transaction.CommitAsync(cancellationToken);
-                return response;
+                return Remember(context, response);
             }
 
             var txContext = new TxContext(
@@ -60,7 +60,7 @@ namespace VolTech.Server.Transaction
                 var response = await handler(txContext);
                 await FillCommonResponseAsync(txContext, response);
                 await CommitAsync(txContext, settings.FullName, requestId);
-                return response;
+                return Remember(context, response);
             }
 
             if (requestId == null)
@@ -112,7 +112,7 @@ namespace VolTech.Server.Transaction
 
                     var saved = reader.GetFieldValue<byte[]>(2);
                     SetReplayed(context, true);
-                    return context.MessageSerializer.Deserialize<TResponse>(new ReadOnlySequence<byte>(saved));
+                    return Remember(context, context.MessageSerializer.Deserialize<TResponse>(new ReadOnlySequence<byte>(saved)));
                 }
             }
 
@@ -134,6 +134,13 @@ namespace VolTech.Server.Transaction
             }
 
             await CommitAsync(txContext, rpc, requestId);
+            return Remember(context, response);
+        }
+
+        /// <summary>返すレスポンスを覚える。CommonResponseCheckFilter が、RunAsync を通ったレスポンスかを確かめる。</summary>
+        private static TResponse Remember<TResponse>(ServiceContext context, TResponse response)
+        {
+            context.Items[ContextItems.RunResponse] = response!;
             return response;
         }
 
