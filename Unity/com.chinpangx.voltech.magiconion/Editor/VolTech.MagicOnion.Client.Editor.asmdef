@@ -1,0 +1,19 @@
+{
+    "name": "VolTech.MagicOnion.Client.Editor",
+    "rootNamespace": "VolTech.Client.Editor",
+    "references": [
+        "VolTech.MagicOnion.Client",
+        "VolTech.Server.Abstractions"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
