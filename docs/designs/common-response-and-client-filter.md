@@ -86,6 +86,7 @@ RFC で指摘された問題は次の 4 つ。
 *   アプリは `try/catch` を書かず、`IsError`・`ErrorCode`・`ErrorMessage` で失敗を処理する。エラーの処理は共通エラーハンドラーが行い、アプリは各 API でダイアログを書かない
 *   AOT(IL2CPP)で動く前提(使ってよいリフレクション・ジェネリック)を書く。IL2CPP での確認はしない(Q8)
 *   変えた振る舞いを、サーバー(`tests/VolTech.Server.Tests`)と EditMode(`Tests/EditMode`)のテストで確かめる
+*   Unity のクライアントが本物のサーバーと通信できることを、PlayMode のテストで確かめる。ヘッダー、認証、再認証、再送、エラーの形、`Common`、キャンセル、締め切りを、実際の通信で確かめる
 
 ## Non-Goals
 
@@ -391,6 +392,8 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 
 ### Risks
 
+*   **E2E は CI で動かない**: Unity と Docker が要るので、手で動かす。動かし忘れると、通信の退行に気づけない
+*   **E2E は Editor の gRPC で動く**: Editor では Burst が同梱する gRPC 2.61.0 が読み込まれる(`docs/index.md`)。本番の 2.84.0 での確認にはならない
 *   **IL2CPP で確かめない**: Q8 の決定で、Technical Plan の「6. AOT(IL2CPP)で動く前提」を IL2CPP で確かめない。`CallInvoker` の包み方、`TCommon` の判定、フォーマッターが IL2CPP だけで違っても、この設計書の作業の中では見つからない
 *   **`RunAsync` を通らないレスポンスは書ける**: 検査は実行時で、動かした RPC でしか気づけない。検出はコミットの後になる。Q1 の決定で受け入れる
 *   **`ToResult` の付け忘れ**: コンパイルでは分からない。ダイアログは出た後、呼び出し側に `ApiException` が届く。利用ガイドに書く
@@ -419,7 +422,8 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 5.  **反映処理**: 反映処理を 1 つにまとめる(ファイル 25 の「段階 5」、26 の「段階 5」、29、30、33 の「段階 5」)。この段階ではラッパーのまま
 6.  **テストの移行**: 本体を変えず、テストだけを本物のクライアントと `FakeCallInvoker` に移し、今のコードで全部通す(ファイル 32・33 の「段階 6」、34、35)
 7.  **クライアント**: `ApiCore` をフィルターと `CallInvoker` から動かす形にし、アプリの呼び方を変える(ファイル 17〜24、25・26 の「段階 7」、27、28、31、32・33 の「段階 7」)
-8.  **全体の検証**: Verification Plan を実行し、結果と実装で分かった API 名の違いを設計書と `docs/index.md` に戻す(ファイル 1・10)
+8.  **実サーバーでの確認**: テスト用のサーバーと PlayMode のテストを作り、Unity から本物のサーバーを呼ぶ(ファイル 36〜38)。設計書の承認の後に、オーナーの指示で足した(2026-11-07)。これが通るまで、`main` に入れない
+9.  **全体の検証**: Verification Plan を実行し、結果と実装で分かった API 名の違いを設計書と `docs/index.md` に戻す(ファイル 1・10)
 
 実装は 1 本のブランチで行い、段階ごとにテストが通る形でコミットする。Uta の変更はこの設計書に含まない。基盤の版を上げるときに、Uta のリポジトリで 7 RPC の呼び方と組み立ての処理を移す。サーバーのサービスは書き方が変わらない。
 
@@ -442,7 +446,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 1. `docs/designs/common-response-and-client-filter.md` (Modify)
 
 *   **Type / Scope**: 設計書
-*   **Proposed Changes**: 段階 1 で Status を Approved にする。段階 2 の結果を段階 3 で、実装で分かった API 名の違いを段階 8 で戻す
+*   **Proposed Changes**: 段階 1 で Status を Approved にする。段階 2 の結果を段階 3 で、実装で分かった API 名の違いを段階 9 で戻す
 
 #### 2. `docs/designs/index.md` (Modify)
 
@@ -519,7 +523,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 16. `tests/VolTech.Server.Tests/CommonResponseTests.cs`・`Support/CommonResponseTestServices.cs` (Modify)
 
 *   **Type / Scope**: 結合テスト
-*   **Proposed Changes**: 次を足す: `RunAsync` の外で詰め替えると `INTERNAL`、`RunAsync` を通さないと `INTERNAL`、`IApiResponse<>` でないレスポンスは検査しない、同じ `x-request-id` の再送は検査を通る、保存済みのレスポンスを読めないと `INTERNAL` になり本体を呼ばない(CUJ 5)
+*   **Proposed Changes**: 次を足す: `RunAsync` の外で詰め替えると `INTERNAL`、`RunAsync` を通さないと `INTERNAL`、同じ `x-request-id` の再送は検査を通る、保存済みのレスポンスを読めないと `INTERNAL` になり本体を呼ばない(CUJ 5)
 
 #### クライアント
 
@@ -618,13 +622,32 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 *   **Type / Scope**: ビルドの設定
 *   **Proposed Changes**: 本物のクライアントを動かすのに要る参照を足す。この asmdef は `overrideReferences: true` なので、`precompiledReferences` に `MagicOnion.Client.dll`・`MagicOnion.Shared.dll`・`MagicOnion.Serialization.MessagePack.dll`・`MessagePack.dll` のようにファイル名で書く。`ClientBehaviorTests` で確かめた一覧
 
+#### 実サーバーでの確認
+
+2026-11-07 に PlayMode の 12 件が通った(`tests/VolTech.E2E.Server` を相手に、YetAnotherHttpHandler で通信した)。
+
+#### 36. `tests/VolTech.E2E.Server/VolTech.E2E.Server.csproj`・`Program.cs`・`E2EService.cs` (Create)、`VolTech-MagicOnion.slnx` (Modify)
+
+*   **Type / Scope**: テスト用のサーバー
+*   **Proposed Changes**: 本物の `AddVoltechServer` を Kestrel の h2c(既定のポートは 5199)で起動する実行ファイル。PostgreSQL は Testcontainers で起動してマイグレーションを流す。`IPlayerResolver` はいつも `Active` を返す。共有インターフェースは `Unity/VolTech.Sandbox/Assets/E2E/Shared/` のソースを `Compile Include` で読み込む。`E2EService` は確認用の RPC を持つ
+
+#### 37. `Unity/VolTech.Sandbox/Assets/E2E/Shared/IE2EService.cs`・`VolTech.Sandbox.E2E.Tests.asmdef`・`E2EClients.cs`・`E2ETests.cs` (Create)
+
+*   **Type / Scope**: PlayMode テスト
+*   **Proposed Changes**: Sandbox の PlayMode テスト。`ApiChannel`(YetAnotherHttpHandler)、本物の `DeviceTokenProvider`、`ApiCore.CreateClient<T>` で、ファイル 36 のサーバーを呼ぶ。サーバーが動いていなければ失敗する(スキップしない)。接続先は環境変数 `VOLTECH_E2E_ADDRESS` で変えられる。確かめること: 端末登録とトークンの発行、`authorization`・`x-request-id`・`x-app-version`・`x-game-date` がサーバーに届くこと、`[SkipAuth]` の RPC、`Common` の反映、応答を失ったときの再送で本体を呼ばないこと、トークンを消したときの再認証、業務エラーの `ErrorCode` と metadata(`grpc-status-details-bin` が届くこと)、`INTERNAL`、`RunAsync` を通らないレスポンスの検査、`ResetSession` で通信が止まること、締め切りで通信が止まること
+
+#### 38. `README.md`・`docs/designs/implementation/project-structure.md`・`docs/index.md`・`docs/guide/client.md` (Modify)
+
+*   **Type / Scope**: 文書
+*   **Proposed Changes**: `README.md` の「開発」に、サーバーを起動して PlayMode のテストを動かす手順を書く。`project-structure.md` に `tests/VolTech.E2E.Server` と `Assets/E2E` を足す。`docs/index.md` の「確かめること」の、YetAnotherHttpHandler でトレーラーが届くかの項目を、結果に合わせて直す。`Assets/Smoke` の説明の「相手のサーバーはまだリポジトリに入れていない」は、`SmokeClient` についての記述なので残す
+
 ### Verification Plan
 
 *   **Compilation/Build**: `dotnet build VolTech-MagicOnion.slnx --configuration Release`。Unity は Sandbox(7000.0.0a12)でコンパイルが通り、パッケージのコードに UAL0010 の警告が出ないこと
 *   **Unit Tests**: `dotnet test VolTech-MagicOnion.slnx --configuration Release`(Docker が要る)。`unity test <Sandbox のパス> --mode EditMode`(Unity CLI。実装設計書のクライアントの「テスト」と同じ)
 *   **Static Analysis & Linting**: `.editorconfig` のコードスタイルはビルドで確かめる。次の検索で 0 件になること(大文字小文字を区別する): `Unity/com.chinpangx.voltech.magiconion` と `docs/guide`・`docs/spec` の `ApiServiceBase`・`CreateHeaders`・`CommonApplier`・`IPlayerDiffApplier`・`IBadgeApplier`・`INotificationApplier`。`docs/guide`・`docs/spec` の `handledCodes`
 *   **Test Coverage Requirement**: 数値の目標は置かない。下の表の項目を、表に書いた場所ですべて確かめる
-*   **E2E/Integration**: 実サーバーを相手にした確認と、IL2CPP のプレイヤーでの確認は、この設計書の完了条件に入れない(`docs/index.md` の既存の項目のまま。Q8)
+*   **E2E/Integration**: `dotnet run --project tests/VolTech.E2E.Server` でサーバーを起動し、`unity test <Sandbox のパス> --mode PlayMode` で全部通す。Docker が要る。CI では動かさない(Unity と Docker が要るため)ので、クライアントを変えたときは手で動かす。IL2CPP のプレイヤーでの確認は、この設計書の完了条件に入れない(Q8)
 
 | 確かめること | 確かめる場所 |
 | --- | --- |
@@ -640,6 +663,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 | 別のサービスのクライアントどうしでも順番待ちが効く | EditMode の `ApiCoreTests` |
 | 古いセッションの呼び出しが通信に進まない(`FakeCallInvoker` の `Func` が呼ばれない) | EditMode の `ApiCoreTests` |
 | 内部のヘッダーが送られない | EditMode の `ApiCoreTests` |
+| Unity のクライアントが本物のサーバーと通信できる(ファイル 37 の項目) | PlayMode の `E2ETests` |
 
 *   **実装の後**: `/egm:egm-drift-report` で設計書とコードのずれを確かめ、ずれは設計書に戻す
 

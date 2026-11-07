@@ -29,6 +29,13 @@ dotnet build VolTech-MagicOnion.slnx
 dotnet test VolTech-MagicOnion.slnx
 ```
 
+Unity のクライアントが本物のサーバーと通信できることは、PlayMode のテストで確かめる。CI では動かないので、クライアントを変えたら手で動かす。Docker が要る。
+
+```
+dotnet run --project tests/VolTech.E2E.Server
+unity test Unity/VolTech.Sandbox --mode PlayMode
+```
+
 使うライブラリの版は [利用ガイドの使う版](docs/guide/getting-started.md#使う版)。Sandbox もこの版で入れている。
 
 ## ライセンス

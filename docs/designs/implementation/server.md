@@ -40,6 +40,7 @@
 - トレーラー `grpc-status-details-bin` は `Grpc.StatusProto` で組み立てる(クライアントの手書きパーサーは Unity の都合なので、そのまま残す)
 - トレーラーは、フィルターから投げても .NET の MagicOnion クライアントまで届く(`tests/VolTech.Server.Tests` の `FilterTests`)。Unity(YetAnotherHttpHandler)で届くかは、クライアントを移すときに確かめる
 - `AuthFilter` は `UNAUTHENTICATED` を `ReturnStatusException` で投げる。`RpcLogFilter` は `ReturnStatusException` と `RpcException` を `INTERNAL` に変えず、そのまま通す
+- 切断や締め切りの `OperationCanceledException` は、`RpcLogFilter` が `CANCELLED` にする
 - エラーコードは C# の定数として直接書く。VolTech-gRPC の `errors.toml` と生成ツールは、Rust と C# の両方に同じ定数を作るためのものだった。サーバーもクライアントも C# になり、定数を書いたソースを共有すれば済むので、使わない
 
 ## 認証
@@ -67,7 +68,7 @@
 
 | 型 | 置き場所 | 役目 |
 | --- | --- | --- |
-| `IApiResponse<TCommon>`(`TCommon Common { get; set; }`) | `Abstractions` | レスポンスの型が実装する。`TCommon` は class |
+| `IApiResponse<TCommon>`(`TCommon? Common { get; set; }`) | `Abstractions` | レスポンスの型が実装する。`TCommon` は class |
 | `ICommonResponseCollector<TCommon>`(`ValueTask<TCommon?> BuildAsync(TxContext tx)`) | `Transaction/` | アプリが実装する。記録した中身から `TCommon` を作る。変化が無ければ null を返してよい |
 | `TxContext.GetCollector<TCollector>()` | `Transaction/` | このトランザクションのコレクターを返す。初めて呼んだときに作る |
 | `AddCommonResponse<TCommon, TCollector>()`(`IMagicOnionServerBuilder` の拡張) | `Hosting/` | `AddVoltechServer()` の戻り値に続けて呼ぶ。2 回呼ぶと `InvalidOperationException` |

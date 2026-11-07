@@ -9,13 +9,14 @@ VolTech-MagicOnion/
 │   └─ VolTech.Server/                 サーバー側の全部
 ├─ tests/
 │   ├─ VolTech.Server.Abstractions.Tests/
-│   └─ VolTech.Server.Tests/           単体テストと結合テスト(Testcontainers)
+│   ├─ VolTech.Server.Tests/           単体テストと結合テスト(Testcontainers)
+│   └─ VolTech.E2E.Server/             Unity の PlayMode テストの相手のサーバー(Kestrel の h2c)
 └─ Unity/
     ├─ com.chinpangx.voltech.magiconion/
     │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
     │   ├─ Runtime/Client/             ApiCore など + asmdef
     │   └─ Tests/EditMode/             Runtime/Client のテスト + asmdef
-    └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する
+    └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する。Assets/E2E に PlayMode テスト
 ```
 
 `VolTech.Sandbox` は、パッケージの `.meta` を作る、Unity でコンパイルが通るか確かめる、テストを動かす、IL2CPP でビルドして確かめる、のに使う。基盤の確認がアプリなしで済む。`Unity/Directory.Build.props` は、リポジトリ直下の `Directory.Build.props`(Nullable など)を Unity が作る csproj に効かせないためのもの。NuGet の版は、リポジトリ直下の `Directory.Packages.props` で一か所に固定する(推移的な依存も含む)。

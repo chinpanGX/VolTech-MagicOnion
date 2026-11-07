@@ -8,6 +8,8 @@
 | サーバー内部エラー | `INTERNAL` | `voltech` / `INTERNAL_ERROR`。詳細はログにだけ出す |
 | 認証エラー | `UNAUTHENTICATED` | なし |
 | `x-request-id` が無い・形が違う・別の RPC で使い回した | `INVALID_ARGUMENT` | なし |
+| デバイス登録の `secretKey` の形が違う | `INVALID_ARGUMENT` | なし |
+| 切断・締め切りで処理が止まった | `CANCELLED` | なし |
 
 - 運び方: `google.rpc.Status` の details に `ErrorInfo` を入れ、トレーラー `grpc-status-details-bin` で返す
 - `FAILED_PRECONDITION` の ErrorInfo の `metadata["action"]` に `ERROR_ACTION_STAY / RETRY / HOME / TITLE / UPDATE` を入れると、クライアントの既定の action を上書きできる。ほかのステータス(`INTERNAL` など)では上書きを読まない

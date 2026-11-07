@@ -30,7 +30,8 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 
 - [x] サーバー: `IMagicOnionServiceFilter` と `GlobalFilters`、`ServiceContext.Items` が使う版(7.11.0)にあるか。あった。`Order` が小さいほど外側で動く(2026-10-27、`tests/VolTech.Server.Tests` の `FilterTests`)
 - [x] サーバーのフィルターで `RpcException(status, trailers)` を投げたとき、`grpc-status-details-bin` がクライアントまで届くか。.NET の MagicOnion クライアントで届いた(2026-10-27、`FilterTests`)
-- [ ] Unity(YetAnotherHttpHandler)のクライアントでも `grpc-status-details-bin` が届くか。クライアントを移すときに確かめる
+- [x] Unity(YetAnotherHttpHandler)のクライアントでも `grpc-status-details-bin` が届くか。届いた(2026-11-07、PlayMode の `E2ETests` で `tests/VolTech.E2E.Server` を呼んだ。7000.0.0a12 の Editor)
+- [x] Unity のクライアントが本物のサーバーと通信できるか。端末登録、トークン、ヘッダー、再認証、再送、エラー、`Common`、キャンセル、締め切りを確かめた(2026-11-07、同じテスト 12 件。Editor では gRPC 2.61.0)
 - [x] クライアントで、呼び出しごとのヘッダーと締め切りを渡し、レスポンスヘッダー(`x-server-time` など)を読めるか。7.11.0 の `WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` で読めた(2026-10-26、Sandbox の `Assets/Smoke/`)
 - [x] Windows の IL2CPP でプレイヤーをビルドできるか。`Microsoft.Bcl.AsyncInterfaces` を手で置けば通る。ただし `.meta` に `Exclude Editor` を書く古い形式だと DLL がプレイヤーに渡らず `IL1009` で失敗する。`Any` を有効・`Editor` を無効にする形式に直して通った(2026-11-01、Sandbox のコピーを `BuildPipeline.BuildPlayer` で IL2CPP に指定。7000.0.0a12)。2026-10-28 の記録は、そのときの `.meta` の形を確かめておらず、再現できなかった。理由と置き方は [導入](guide/getting-started.md#microsoftbclasyncinterfaces-を手で置く)
 - [ ] Windows の IL2CPP のプレイヤーから、サーバーを呼べるか(gRPC 2.84.0 とソースジェネレーターのクライアント)

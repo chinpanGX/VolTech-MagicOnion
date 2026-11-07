@@ -1,6 +1,6 @@
 # クライアント(Unity)
 
-VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作る。通信の骨格は流用でき、変わるのは `call` の型、レスポンス型の扱い、`DeviceTokenProvider` の通信部分の 3 点。アプリの呼び方は MagicOnion の公式に合わせ、共有インターフェースを直接呼ぶ([設計書 1](../common-response-and-client-filter.md))。
+VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作る。通信の骨格は流用できる。アプリの呼び方は MagicOnion の公式に合わせ、共有インターフェースを直接呼ぶ([設計書 1](../common-response-and-client-filter.md))。
 
 | 対象 | 扱い | 理由 |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ VolTech-gRPC のクライアント(`com.chinpangx.voltech.grpc` v0.6.0)から作
 | `Internal/ApiHeaders` | `Abstractions` の `ApiHeaders` | 移さず、サーバーと共有する定数を使う |
 | `Internal/`(`ErrorConverter`・`RpcErrorDetails`・`RpcErrorInfo`・`AesHmacCipher`・`SafeFile`) | 同じ名前 | `ErrorMetadataKeys.Action`・`ApiHeaders.ErrorDetailsTrailer` を使う |
 | `Clock/`・`ErrorHandling/`・`Hooks/`(`IApiActivityHandler`・`IApiLogger`・`ITokenProvider`)・`AppVersion` | 同じ名前 | なし |
-| `Testing/FakeRpcErrors`・`Testing/InMemoryAccountStore` | 同じ名前 | なし |
+| `Testing/FakeRpcErrors`・`Testing/InMemoryAccountStore` | 同じ名前 | `FakeRpcErrors` に `ApiFailureResult<T>` を足した |
 | `Runtime/Unity/ApiChannel` | `ApiChannel` | `AddInterceptor` と、Interceptor を付ける CallInvoker を外した(Tracing のためだけの仕組みで、static の可変なフィールドを持つため)。`CreateCallInvoker` はチャンネルの CallInvoker をそのまま返す |
 
 static フィールドは定数と変えられない値だけにした(Unity 7 のアナライザーの UAL0010。[プロジェクト構成](project-structure.md#共有のしかた))。VolTech-gRPC 版の `ApiError` の空の辞書と `DeviceTokenProvider` の `refreshMargin` は、呼ぶたびに作るか定数にした。`Generated/AccountStore.cs` は protoc の生成物のまま static フィールドを持つ。

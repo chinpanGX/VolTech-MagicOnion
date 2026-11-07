@@ -82,7 +82,7 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 
 ### 7. Monitor・Tracing・クライアントの計測は、1 つの判断にまとまる
 
-`IClientFilter` を使えば、シリアライズ前の型付きのリクエストとレスポンスを見られる。そうなると、「Monitor は protobuf のメッセージを記録する前提」という保留の理由はなくなる。ただし画面に表示するには、MessagePack の値を JSON に変える処理と、リリースのビルドから外す仕組みが要る。開発中だけ使うツールなので、Uta の開発で困るまで後回しにできる。`Runtime/Unity/` の部品も同じ扱いで、Uta が使うものだけを移せばよい。
+`IClientFilter` か `CallInvoker` を使えば、シリアライズ前のリクエストとレスポンスを見られる(フィルターはレスポンスの型を知らないので、[設計書 1](common-response-and-client-filter.md) では `CallInvoker` で読む)。そうなると、「Monitor は protobuf のメッセージを記録する前提」という保留の理由はなくなる。ただし画面に表示するには、MessagePack の値を JSON に変える処理と、リリースのビルドから外す仕組みが要る。開発中だけ使うツールなので、Uta の開発で困るまで後回しにできる。`Runtime/Unity/` の部品も同じ扱いで、Uta が使うものだけを移せばよい。
 
 ### 8. `StoredAccount` の保存形式は、端末に保存済みのデータがあるかで決まる
 
@@ -103,7 +103,7 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 * **In-Scope Goals:**
   * 作り終えた部分は、実害(バグ、AOT で動かない、保守の手間)があるところと、下の項目で触るところだけを直す。ベストプラクティスは、そのとき書き方や構造で迷った場合の決め手にする
   * クライアントとの取り決め(ステータスと ErrorInfo、ヘッダー名、予約エラー、冪等性の意味)を「変えないもの」として、ベストプラクティスより上に置く
-  * 確かめていない Unity の項目(IL2CPP・AOT・トレーラー)を、設計し直す前に確かめる。ただし設計書 1 では、IL2CPP の確認を前提にしないと決めた(2026-11-07。設計書 1 の Q8)
+  * 確かめていない Unity の項目(IL2CPP・AOT・トレーラー)を、設計し直す前に確かめる。ただし設計書 1 では、IL2CPP の確認を前提にしないと決めた(2026-11-07。設計書 1 の Q8)。`grpc-status-details-bin` が届くことは設計書 1 の実装の中で確かめた
   * クライアントの共通の処理を `IClientFilter` に移す(基準 1 から外れている唯一の大きな点)。ヘッダーは、`Metadata` の使い回しのため、基盤が包む `CallInvoker` で付ける([設計書 1](common-response-and-client-filter.md))
   * 共通レスポンス項目を、Transaction と `ApiCore` と同じ単位で見直す
   * サーバーとクライアントのアプリの書き方を MagicOnion の公式に合わせる。クライアントは共有インターフェースを直接呼ぶ(2026-11-07 に追加。[設計書 1](common-response-and-client-filter.md))
@@ -149,5 +149,5 @@ MagicOnion 版で同じことをするには、`ITransactions` の外からゲ�
 4. 設計書 2: ログと計測(JSON の出力、相関、項目名の取り決め、OpenTelemetry の標準の計装、Cloud Logging の量の見積もり)
 5. 設計書 3: ゲームログの出力先の選択と、`RunAsync` の外から書く API
 6. 設計書 5(小さい): `StoredAccount` を MessagePack に移し、`RpcErrorDetails` の読み取り方を決める(Google.Protobuf のままか、自前か)。Monitor の `ErrorInfo` の表示も同じ読み取りを使うので、設計書 4 より先に置く
-7. 設計書 4: Monitor(`IClientFilter` での記録、記録の置き場所、Editor のウィンドウ、実機からの送信)
+7. 設計書 4: Monitor(通信の記録、記録の置き場所、Editor のウィンドウ、実機からの送信)
 8. 後回し: `Runtime/Unity/` の部品、テスト用の偽物をアプリに配る形
