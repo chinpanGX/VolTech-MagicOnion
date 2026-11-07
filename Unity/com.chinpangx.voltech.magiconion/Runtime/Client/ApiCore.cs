@@ -330,7 +330,7 @@ namespace VolTech.Client
                 return SendAttempt.Success(response, responseHeaders, callContext.ReadResponse);
             }
             catch (RpcException exception) when (
-                exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth && canReauthenticate)
+                exception.StatusCode == StatusCode.Unauthenticated && settings.RequiresAuth && canReauthenticate && token != null)
             {
                 return SendAttempt.Unauthenticated(token);
             }
@@ -477,7 +477,7 @@ namespace VolTech.Client
                 }
 
                 // 画面を遷移する前に、セッションを終わらせる(古い通信を止め、次のエラーのダイアログも出さない)。
-                // 遷移は、順番待ちを解放してから InvokeAsync が行う
+                // 遷移は、順番待ちを解放してから SendAsync が行う
                 switch (decision)
                 {
                     case ErrorDecision.ReturnToHome:

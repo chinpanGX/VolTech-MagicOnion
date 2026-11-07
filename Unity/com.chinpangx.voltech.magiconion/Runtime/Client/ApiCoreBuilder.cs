@@ -107,7 +107,7 @@ namespace VolTech.Client
         /// サーバー時刻を持つ時計を渡す。渡さなければ ApiCore が自分で作る(ApiCore.ServerClock で取れる)。
         /// </summary>
         /// <param name="serverClock">
-        /// 成功したレスポンスのサーバー時刻で合わせる時計。ServerClockResetter と同じものを渡すと、前面に戻ったときに合わせ直せる。null なら ApiCore が作る。
+        /// 成功したレスポンスのサーバー時刻で合わせる時計。アプリが持っている時計を渡すと、前面に戻ったときに Reset で合わせ直せる。null なら ApiCore が作る。
         /// </param>
         /// <returns>このビルダー。</returns>
         public ApiCoreBuilder WithServerClock(ServerClock serverClock)

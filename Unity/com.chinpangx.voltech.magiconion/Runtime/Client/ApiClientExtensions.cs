@@ -17,6 +17,7 @@ namespace VolTech.Client
     {
         // サーバーには送らない(ApiCallInvoker が写さない)ので、クライアントとの取り決めではない。ApiHeaders には入れない
         private const string CallHeader = "x-voltech-call";
+        private const string CodesPrefix = "codes=";
 
         /// <summary>
         /// 呼び出し側が自分で処理するエラーコードを指定する。ダイアログを出さずに失敗として返る。
@@ -62,8 +63,13 @@ namespace VolTech.Client
             }
 
             var parts = value.Split(';');
+            if (parts.Length != 2 || (parts[0] != "activity=0" && parts[0] != "activity=1") || !parts[1].StartsWith(CodesPrefix, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"{CallHeader} の値を読めない: {value}");
+            }
+
             notifyActivity = parts[0] == "activity=1";
-            handledCodes = parts[1].Substring("codes=".Length)
+            handledCodes = parts[1].Substring(CodesPrefix.Length)
                 .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(ParseCode)
                 .ToArray();
@@ -73,7 +79,7 @@ namespace VolTech.Client
             where T : IService<T>
         {
             var formatted = string.Join(",", codes.Select(FormatCode));
-            var value = $"activity={(notifyActivity ? 1 : 0)};codes={formatted}";
+            var value = $"activity={(notifyActivity ? 1 : 0)};{CodesPrefix}{formatted}";
             return client.WithHeaders(new Metadata { { CallHeader, value } });
         }
 
@@ -85,6 +91,11 @@ namespace VolTech.Client
         private static ErrorCode ParseCode(string value)
         {
             var parts = value.Split('/');
+            if (parts.Length != 2)
+            {
+                throw new InvalidOperationException($"{CallHeader} のエラーコードを読めない: {value}");
+            }
+
             return new ErrorCode(Uri.UnescapeDataString(parts[0]), Uri.UnescapeDataString(parts[1]));
         }
     }

@@ -30,7 +30,7 @@ namespace VolTech.Client.Tests.EditMode
         private ITestService client;
 
         /// <summary>
-        /// テストごとに、成功を返す偽のサービスと、それを呼ぶ ApiCore を作る。
+        /// テストごとに、成功を返す偽の CallInvoker と、それを呼ぶ ApiCore を作る。
         /// </summary>
         [SetUp]
         public void SetUp()
@@ -316,10 +316,10 @@ namespace VolTech.Client.Tests.EditMode
         });
 
         /// <summary>
-        /// 業務エラー(FAILED_PRECONDITION + ErrorInfo)を handledCodes で受け取ると、エラーハンドラーを呼ばずに失敗として返す。
+        /// 業務エラー(FAILED_PRECONDITION + ErrorInfo)を WithHandledCodes で指定すると、エラーハンドラーを呼ばずに失敗として返す。
         /// </summary>
         [UnityTest]
-        [Description("業務エラーを handledCodes で受け取ると、エラーハンドラーを呼ばずに失敗として返す")]
+        [Description("業務エラーを WithHandledCodes で指定すると、エラーハンドラーを呼ばずに失敗として返す")]
         public IEnumerator HandledBusinessErrorSkipsErrorHandler() => UniTask.ToCoroutine(async () =>
         {
             invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(TestErrors.NotEnough, "not enough"));
@@ -333,10 +333,10 @@ namespace VolTech.Client.Tests.EditMode
         });
 
         /// <summary>
-        /// 予約エラー(DATE_CHANGED)は handledCodes にあっても、エラーハンドラーに渡す。
+        /// 予約エラー(DATE_CHANGED)は WithHandledCodes で指定しても、エラーハンドラーに渡す。
         /// </summary>
         [UnityTest]
-        [Description("予約エラーは handledCodes にあっても、エラーハンドラーに渡す")]
+        [Description("予約エラーは WithHandledCodes で指定しても、エラーハンドラーに渡す")]
         public IEnumerator ReservedErrorGoesToErrorHandler() => UniTask.ToCoroutine(async () =>
         {
             invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(ReservedErrors.DateChanged));
@@ -467,14 +467,21 @@ namespace VolTech.Client.Tests.EditMode
         [Description("締め切りは試行ごとに計算する")]
         public IEnumerator DeadlineIsSetForEachAttempt() => UniTask.ToCoroutine(async () =>
         {
-            invoker.Handler = call => invoker.Calls.Count == 1
-                ? Failure(FakeRpcErrors.Status(StatusCode.Unauthenticated))
-                : Success("ok");
+            invoker.Handler = async call =>
+            {
+                if (call.Index != 0)
+                {
+                    return await Success("ok");
+                }
+
+                // 同じ締め切りを使い回していたら見分けられるように、時間を置いてから失敗させる
+                await Task.Delay(50);
+                return await Failure(FakeRpcErrors.Status(StatusCode.Unauthenticated));
+            };
 
             await client.WriteAsync("a").ToResult();
 
-            Assert.That(invoker.Calls[0].Options.Deadline, Is.Not.Null);
-            Assert.That(invoker.Calls[1].Options.Deadline, Is.GreaterThanOrEqualTo(invoker.Calls[0].Options.Deadline));
+            Assert.That(invoker.Calls[1].Options.Deadline, Is.GreaterThan(invoker.Calls[0].Options.Deadline));
         });
 
         /// <summary>
@@ -600,6 +607,59 @@ namespace VolTech.Client.Tests.EditMode
         });
 
         /// <summary>
+        /// トークンを取るときに UNAUTHENTICATED を受けたら、何も捨てず、送り直さずに UNKNOWN_ERROR にする。
+        /// </summary>
+        [UnityTest]
+        [Description("トークンを取るときに UNAUTHENTICATED を受けたら、何も捨てず、送り直さずに UNKNOWN_ERROR にする")]
+        public IEnumerator UnauthenticatedWhileGettingTokenIsNotResent() => UniTask.ToCoroutine(async () =>
+        {
+            tokenProvider.OnGetToken = () => throw FakeRpcErrors.Status(StatusCode.Unauthenticated);
+
+            var result = await client.ReadAsync(1).ToResult();
+
+            Assert.That(result.ErrorCode, Is.EqualTo(ReservedErrors.UnknownError));
+            Assert.That(tokenProvider.Invalidated, Is.Empty);
+            Assert.That(invoker.Calls, Is.Empty);
+            Assert.That(errorHandler.Errors.Count, Is.EqualTo(1));
+        });
+
+        /// <summary>
+        /// x-voltech-call を読めなければ、基盤の不具合として例外にする。
+        /// </summary>
+        [UnityTest]
+        [Description("x-voltech-call を読めなければ、基盤の不具合として例外にする")]
+        public IEnumerator BrokenCallHeaderThrows() => UniTask.ToCoroutine(async () =>
+        {
+            Exception caught = null;
+            try
+            {
+                await client.WithHeaders(new Metadata { { "x-voltech-call", "broken" } }).ReadAsync(1).ToResult();
+            }
+            catch (InvalidOperationException exception)
+            {
+                caught = exception;
+            }
+
+            Assert.That(caught, Is.Not.Null);
+            Assert.That(invoker.Calls, Is.Empty);
+        });
+
+        /// <summary>
+        /// エラーコードに区切りの文字が入っていても、WithHandledCodes の指定が効く。
+        /// </summary>
+        [UnityTest]
+        [Description("エラーコードに区切りの文字が入っていても、WithHandledCodes の指定が効く")]
+        public IEnumerator HandledCodesAreEscaped() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = call => Failure(FakeRpcErrors.FailedPrecondition(TestErrors.WithSeparators, "failed"));
+
+            var result = await client.WithHandledCodes(TestErrors.WithSeparators).ReadAsync(1).ToResult();
+
+            Assert.That(result.IsError, Is.True);
+            Assert.That(errorHandler.Errors, Is.Empty);
+        });
+
+        /// <summary>
         /// FakeRpcErrors.ApiFailureResult で作った失敗は、ToResult が失敗の結果にする。
         /// </summary>
         [UnityTest]
@@ -638,7 +698,11 @@ namespace VolTech.Client.Tests.EditMode
                 TestClients.ClientFactoryProvider,
                 options,
                 tokenProvider,
-                new ErrorPolicyProvider(new[] { new ErrorDefinition(TestErrors.NotEnough, ErrorAction.Stay) }),
+                new ErrorPolicyProvider(new[]
+                {
+                    new ErrorDefinition(TestErrors.NotEnough, ErrorAction.Stay),
+                    new ErrorDefinition(TestErrors.WithSeparators, ErrorAction.Stay),
+                }),
                 errorHandler);
         }
 
@@ -661,6 +725,8 @@ namespace VolTech.Client.Tests.EditMode
         private static class TestErrors
         {
             public static ErrorCode NotEnough => new ErrorCode("test", "NOT_ENOUGH");
+
+            public static ErrorCode WithSeparators => new ErrorCode("test/a,b", "NOT;ENOUGH");
         }
 
         private sealed class RecordingActivityHandler : IApiActivityHandler

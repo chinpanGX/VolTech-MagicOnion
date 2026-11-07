@@ -196,6 +196,49 @@ namespace VolTech.Client.Tests.EditMode
         });
 
         /// <summary>
+        /// 値型のレスポンスの RPC では、CallInvoker の TResponse は MagicOnion の内部の Box になる。
+        /// </summary>
+        [UnityTest]
+        [Description("値型のレスポンスの RPC では、CallInvoker の TResponse は MagicOnion の内部の Box になる")]
+        public IEnumerator ValueTypeResponseIsBoxed() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = _ => Task.FromResult(FakeResult.Success(MessagePackSerializer.Serialize(5, TestClients.SerializerOptions)));
+
+            var value = await client.CountAsync();
+
+            Assert.That(value, Is.EqualTo(5));
+            Assert.That(filter.ResponseType, Is.EqualTo(typeof(int)));
+            Assert.That(invoker.Calls[0].ResponseType.Name, Does.StartWith("Box"));
+        });
+
+        /// <summary>
+        /// 戻り値なしの RPC の ResponseType は Nil で、CallInvoker の TResponse は Box になる。
+        /// </summary>
+        [UnityTest]
+        [Description("戻り値なしの RPC の ResponseType は Nil で、CallInvoker の TResponse は Box になる")]
+        public IEnumerator NoResponseIsBoxedNil() => UniTask.ToCoroutine(async () =>
+        {
+            invoker.Handler = _ => Task.FromResult(FakeResult.Success(MessagePackSerializer.Serialize(Nil.Default, TestClients.SerializerOptions)));
+
+            await client.PingAsync();
+
+            Assert.That(filter.ResponseType, Is.EqualTo(typeof(Nil)));
+            Assert.That(invoker.Calls[0].ResponseType.Name, Does.StartWith("Box"));
+        });
+
+        /// <summary>
+        /// GetResponseAs&lt;object&gt; は例外にならず null を返す。フィルターはレスポンスを読めない。
+        /// </summary>
+        [UnityTest]
+        [Description("GetResponseAs<object> は例外にならず null を返す")]
+        public IEnumerator FilterCannotReadResponseAsObject() => UniTask.ToCoroutine(async () =>
+        {
+            await client.GetAsync(1);
+
+            Assert.That(filter.ResponseAsObject, Is.Null);
+        });
+
+        /// <summary>
         /// 生成の属性に書いた型のアセンブリの共有インターフェースは、全部クライアントが生成される。
         /// </summary>
         [Test]
@@ -261,6 +304,10 @@ namespace VolTech.Client.Tests.EditMode
 
             public Metadata ResponseHeaders { get; private set; }
 
+            public Type ResponseType { get; private set; }
+
+            public object ResponseAsObject { get; private set; }
+
             public Exception ExceptionFromNext { get; private set; }
 
             public int CallsSeenBeforeAwait { get; private set; }
@@ -277,6 +324,7 @@ namespace VolTech.Client.Tests.EditMode
             {
                 CallCount++;
                 MethodPath = context.MethodPath;
+                ResponseType = context.ResponseType;
                 Headers = context.CallOptions.Headers;
                 if (YieldBeforeNext)
                 {
@@ -291,6 +339,7 @@ namespace VolTech.Client.Tests.EditMode
                         CallsSeenBeforeAwait = CallsAfterNext?.Invoke() ?? 0;
                         var response = await pending;
                         ResponseHeaders = await response.ResponseHeadersAsync;
+                        ResponseAsObject = await response.GetResponseAs<object>();
                         if (ExceptionToThrow != null)
                         {
                             throw ExceptionToThrow;
@@ -316,6 +365,10 @@ namespace VolTech.Client.Tests.EditMode
     public interface IClientBehaviorService : IService<IClientBehaviorService>
     {
         UnaryResult<ClientBehaviorReply> GetAsync(int value);
+
+        UnaryResult<int> CountAsync();
+
+        UnaryResult PingAsync();
     }
 
     /// <summary>[MagicOnionClientGeneration] に名前を書かないインターフェース。同じアセンブリなので生成される。</summary>

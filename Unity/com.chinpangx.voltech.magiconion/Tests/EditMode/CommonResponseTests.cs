@@ -28,7 +28,7 @@ namespace VolTech.Client.Tests.EditMode
         private ApiCore core;
 
         /// <summary>
-        /// テストごとに、Common を返す偽のサービスと、反映処理を渡した ApiCore を作る。
+        /// テストごとに、Common を返す偽の CallInvoker と、反映処理を渡した ApiCore を作る。
         /// </summary>
         [SetUp]
         public void SetUp()
