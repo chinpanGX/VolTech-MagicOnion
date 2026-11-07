@@ -12,6 +12,9 @@ namespace VolTech.Sandbox.Sample
     {
         private const int FontSize = 28;
 
+        // 帯は文言とボタン 2 つが入る高さにする。残りを本文に使う
+        private const float BandBottom = 0.72f;
+
         private readonly Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
         public SampleUi(Transform parent)
@@ -29,16 +32,16 @@ namespace VolTech.Sandbox.Sample
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1280, 720);
 
-            Title = CreatePanel("Title", canvasObject.transform, new Vector2(0, 0), new Vector2(1, 0.85f));
+            Title = CreatePanel("Title", canvasObject.transform, new Vector2(0, 0), new Vector2(1, BandBottom));
             StartButton = CreateButton("はじめる", Title.transform);
 
-            Home = CreatePanel("Home", canvasObject.transform, new Vector2(0, 0), new Vector2(1, 0.85f));
+            Home = CreatePanel("Home", canvasObject.transform, new Vector2(0, 0), new Vector2(1, BandBottom));
             GemsText = CreateText(Home.transform);
             ResultText = CreateText(Home.transform);
             FreeButton = CreateButton("無料で引く", Home.transform);
             PaidButton = CreateButton("引く(300 ジェム)", Home.transform);
 
-            Band = CreatePanel("Band", canvasObject.transform, new Vector2(0, 0.85f), new Vector2(1, 1));
+            Band = CreatePanel("Band", canvasObject.transform, new Vector2(0, BandBottom), new Vector2(1, 1));
             Band.AddComponent<Image>().color = new Color(0.6f, 0.15f, 0.15f);
             var bandLayout = Band.GetComponent<VerticalLayoutGroup>();
             bandLayout.padding = new RectOffset(16, 16, 8, 8);
