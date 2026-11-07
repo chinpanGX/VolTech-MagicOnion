@@ -33,7 +33,7 @@ Unity と共有する `Abstractions` と、サーバー側の全部を持つ `Vo
 - [x] Unity(YetAnotherHttpHandler)のクライアントでも `grpc-status-details-bin` が届くか。届いた(2026-11-07、PlayMode の `E2ETests` で `tests/VolTech.E2E.Server` を呼んだ。7000.0.0a12 の Editor)
 - [x] Unity のクライアントが本物のサーバーと通信できるか。端末登録、トークン、ヘッダー、再認証、再送、エラー、`Common`、キャンセル、締め切りを確かめた(2026-11-07、同じテスト 12 件。Editor では gRPC 2.61.0)
 - [x] Sandbox のサンプルの構成が動くか。`includePlatforms` が空で `UNITY_EDITOR` が条件の asmdef の MonoBehaviour をシーンに付けられた。テストは `--mode PlayMode --filter` で動いた。`LegacyRuntime.ttf` の `Text` に日本語の文字がある(2026-11-07、Editor の PlayMode で確かめた)
-- [ ] Sandbox のサンプルを Editor で手で動かす。本物のマウスで uGUI のボタンを押せるか、`LegacyRuntime.ttf` の日本語が画面に出るか、Server Clock ウィンドウが動くか(CUJ 1〜3)
+- [x] Sandbox のサンプルを Editor で動かす。CUJ 1〜3 と、サーバーが止まっているときの帯、再試行、Server Clock ウィンドウを確かめた(2026-11-07、開いている Editor を Unity Pipeline で操作。ボタンは Input System の仮想の Mouse で押し、ウィンドウは `SendEvent` で押した。OS の本物のマウスでは押していない)
 - [x] クライアントで、呼び出しごとのヘッダーと締め切りを渡し、レスポンスヘッダー(`x-server-time` など)を読めるか。7.11.0 の `WithOptions(CallOptions)` と `UnaryResult<T>.ResponseHeadersAsync` で読めた(2026-10-26、Sandbox の `Assets/Smoke/`)
 - [x] Windows の IL2CPP でプレイヤーをビルドできるか。`Microsoft.Bcl.AsyncInterfaces` を手で置けば通る。ただし `.meta` に `Exclude Editor` を書く古い形式だと DLL がプレイヤーに渡らず `IL1009` で失敗する。`Any` を有効・`Editor` を無効にする形式に直して通った(2026-11-01、Sandbox のコピーを `BuildPipeline.BuildPlayer` で IL2CPP に指定。7000.0.0a12)。2026-10-28 の記録は、そのときの `.meta` の形を確かめておらず、再現できなかった。理由と置き方は [導入](guide/getting-started.md#microsoftbclasyncinterfaces-を手で置く)
 - [ ] Windows の IL2CPP のプレイヤーから、サーバーを呼べるか(gRPC 2.84.0 とソースジェネレーターのクライアント)

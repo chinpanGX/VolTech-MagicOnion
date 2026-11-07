@@ -431,9 +431,10 @@ unity test Unity/VolTech.Sandbox --mode PlayMode --filter VolTech.Sandbox.Sample
 
 2026-11-07 に、PlayMode の `SampleFlowTests` 4 件が通った。E2E の 12 件も `--filter VolTech.Sandbox.E2E` で通った。
 
-使い捨てのテストで `Sample.unity` を読み込み、`Button.onClick` を呼んで、CUJ 1〜3 の画面の流れも確かめた。このテストはリポジトリに入れていない。本物のマウスの入力と、Server Clock ウィンドウはまだ確かめていない([チェックリスト](../index.md#確かめること))。
+使い捨てのテストで `Sample.unity` を読み込み、`Button.onClick` を呼んで、CUJ 1〜3 の画面の流れも確かめた。このテストはリポジトリに入れていない。そのあと、開いている Editor を Unity Pipeline で操作して、CUJ 1〜3 と「手で確かめる」の項目を通した。ボタンは Input System の仮想の `Mouse` デバイスで押したので、`InputSystemUIInputModule` から `onClick` までの経路を通っている。Server Clock ウィンドウのボタンは `SendEvent` で押した。OS の本物のマウスでは押していない。
 
 実装で変えたところは次のとおり。
 
+*   帯の下端を 0.72 にした。0.85 ではボタンが 2 つのときに枠からはみ出した
 *   `SampleUi` は `Camera` も作る。シーンは `SampleGame` の GameObject だけなので、カメラが無いと Game ビューに警告が出る
 *   `IServerClockService` は `SampleClients` と同じアセンブリにあるので、`[MagicOnionClientGeneration]` には `ISampleGachaService` と `IDeviceService` だけを書く

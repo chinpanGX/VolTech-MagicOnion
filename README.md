@@ -51,6 +51,13 @@ Sandbox で `Assets/Sample/Sample.unity` を開いて Play モードにする。
 unity test Unity/VolTech.Sandbox --mode PlayMode --filter VolTech.Sandbox.Sample
 ```
 
+`unity test` は Editor を開いていると動かない。開いているときは、Pipeline で動かして、結果を `test status` で見る。
+
+```
+unity command test run --mode playmode --async_tests --filter VolTech.Sandbox.Sample --project-path Unity/VolTech.Sandbox
+unity command test status --project-path Unity/VolTech.Sandbox
+```
+
 使うライブラリの版は [利用ガイドの使う版](docs/guide/getting-started.md#使う版)。Sandbox もこの版で入れている。
 
 ## ライセンス
