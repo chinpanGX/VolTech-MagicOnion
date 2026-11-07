@@ -59,6 +59,7 @@ public sealed class GachaApi : ApiServiceBase<IGachaService>
 - `InvokeAsync(methodName, request, call, handledCodes = null, notifyActivity = true)`。`methodName` で RPC ごとの設定を引く。`TService` に無い名前なら `ArgumentException`
 - 引数が複数の RPC は、`request` をタプルにして `call` の中で展開する
 - RPC ごとの設定は、コンストラクターで `TService` のメソッドを読んで表にする(リフレクション)。MagicOnion はメソッドのオーバーロードを許さないので、名前で一意に決まる
+- [設計書 1](../common-response-and-client-filter.md) でソースジェネレーターに置き換える案を検討中(承認前)。次の理由は今の実装のもの
 - リフレクションにした理由: 読むのはラッパーを作るときの 1 回だけで、呼び出しのたびには読まない。ソースジェネレーターにすると、`Abstractions` の属性を読む生成器を基盤で作って Unity とサーバーの両方に入れることになり、今の規模では手間に見合わない。サーバーも同じ属性をリフレクションで読むので、読み方を揃えやすい。IL2CPP(AOT)でも属性を読めるかは確かめていない([確かめること](../../index.md#確かめること))。読めなかったら、同じ属性を読むソースジェネレーターに変える(ラッパーに設定を書く形は、属性だけを読むという[仕様](../../spec/headers.md#rpc-ごとの設定は属性に置く)から外れるので採らない)
 - 対応するのは `UnaryResult<T>` を返すメソッドだけ。レスポンスの無い `UnaryResult` には対応していない
 

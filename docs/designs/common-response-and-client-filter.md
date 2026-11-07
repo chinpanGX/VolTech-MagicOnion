@@ -1,4 +1,4 @@
-# 共通レスポンス項目とクライアントのヘッダー付与を、Transaction・ApiCore と一緒に見直す
+# 共通レスポンス項目・クライアントのヘッダー付与・RPC のコード生成を、Transaction・ApiCore と一緒に見直す
 
 *   **Author:** ちんぱん
 *   **Status:** Draft
@@ -8,22 +8,21 @@
 
 ## Overview
 
-[基盤の方針と進める順番](foundation-direction.md)(RFC)の「進める順番」3 番(設計書 1)。次の 2 つを、サーバーの `ITransactions.RunAsync`・`TxContext` とクライアントの `ApiCore` を直す 1 回の変更として設計する。
+[基盤の方針と進める順番](foundation-direction.md)(RFC)の「進める順番」3 番(設計書 1)。次の 3 つを、サーバーの `ITransactions.RunAsync`・`TxContext` とクライアントの `ApiCore` を直す 1 回の変更として設計する。
 
-1. **共通レスポンス項目**(player_diff・バッジ・通知)。未マージのブランチ `feature/common-response` の実装を土台にして、RFC の Analysis 5 の指摘に答える形で直す
+1. **共通レスポンス項目**(player_diff・バッジ・通知)。`feature/common-response` で入れた実装を、RFC の Analysis 5 の指摘に答える形で直す
 2. **クライアントのヘッダー付与**。`ApiCore` が呼ぶたびに `WithOptions(callOptions)` でヘッダーを付けている処理を、MagicOnion の `IClientFilter` に移す。RFC の Analysis 1 で、MagicOnion の公式ドキュメント(基準 1)から外れている大きな点として挙がった唯一の項目
-
 3. **サーバーのハンドラーとクライアントのラッパーの生成**。共有インターフェース(`IService<T>`)から、ソースジェネレーターで両側のコードを作る。サーバーは必ず `RunAsync` を通る基底クラス、クライアントは今は手書きのラッパー。1 の「`Common` が詰められない」形を、コードで書けなくするために足す(2026-11-07 にオーナーが決定)
 
-1 と 2 は `ApiCore` の「1 回送る」処理(`SendOnceAsync`)と「成功の後始末」(`CompleteAsync`)を書き換える。別々に設計すると、同じ箇所を 2 回直すことになる。そのため 1 本にまとめる。
+1 と 2 は `ApiCore` の「1 回送る」処理(`SendOnceAsync`)と「成功の後始末」(`CompleteAsync`)を書き換える。別々に設計すると、同じ箇所を 2 回直すことになる。そのため 1 本にまとめる。3 はクライアントのラッパーと `ApiCore` の呼び方を変えるので、同じ変更に入れる。
 
 クライアントとの取り決め(ステータスと ErrorInfo、ヘッダー名と値、予約エラー、冪等性の意味)は変えない(RFC の決めたこと 2)。この設計書で変えるのは、基盤の公開 API と内部の作りだけ。Uta はリリース前なので、基盤の公開 API の破壊的な変更は許す(RFC の決めたこと 3)。
 
-この設計書が承認されたら、次の節をこの設計書へのリンクに置き換える: `docs/spec/common-response.md` の全体、`docs/designs/implementation/server.md` の「共通レスポンス項目」、`docs/designs/implementation/client.md` の「共通レスポンス項目の反映」とヘッダー付与の記述(具体的な節は Detailed Implementation Plan で挙げる)。
+この設計書が承認されたら、実装の節をこの設計書へのリンクに置き換える: `docs/designs/implementation/server.md` の「共通レスポンス項目」、`docs/designs/implementation/client.md` の「共通レスポンス項目の反映」とヘッダー付与の記述。振る舞いとクライアントとの取り決めは `docs/spec/` に残し、`common-response.md`・`headers.md` の変わる節を直す(具体的な節は Detailed Implementation Plan で挙げる)。
 
 ## The Problem
 
-### 共通レスポンス項目(`feature/common-response` の今の作り)
+### 共通レスポンス項目(今の作り)
 
 今の作りは次のとおり。
 
@@ -57,19 +56,28 @@ MagicOnion の公式ドキュメントでは、呼び出しに共通するヘッ
 - `RequestContext.CallOptions` は読み取り専用(`CallOptions` は struct で、置き換えられない)。**締め切りとキャンセルは、フィルターからは変えられない**。`WithOptions` で渡す必要が残る
 - `RequestContext.Items` は呼び出しごとに MagicOnion が空で作る。呼ぶ側から値を入れておく口は無い
 - `WithOptions` で渡したヘッダーは、フィルターの `context.CallOptions.Headers` で読める
-- 先頭のフィルターの `SendAsync` は、RPC のメソッドを呼んだ時点で、同じスレッドで同期的に始まる(`await` の前に入る)。`AsyncLocal` に入れた値は、待機をまたがずに読める(2026-11-07、同じ方法で確かめた。IL2CPP でも同じに動く前提で設計し、実機の確認は Verification Plan に入れる)
+- 先頭のフィルターの `SendAsync` は、RPC のメソッドを呼んだ時点で、同じスレッドで同期的に始まる(`await` の前に入る)。`AsyncLocal` に入れた値は、待機をまたがずに読める(2026-11-07、同じ方法で確かめた。IL2CPP でも同じに動く前提で設計する。実機の確認は Technical Plan の 5 節)
 
 そのため、呼び出しごとの値を `ApiCore` からフィルターへどう渡すかを決める必要がある。`x-request-id` は再送で同じ値を使う。トークンの取得はフィルターに移せない。今は `GetTokenAsync` の後に締め切りを計算しているので、フィルターで待つと、順番待ち・端末登録・発行の時間が RPC の締め切りを消費する(締め切りはフィルターから変えられない)。
 
+### RPC のコード生成
+
+ラッパーも基底クラスも生成しない今の作りには、次の問題がある。
+
+- **サーバー**: 上の問題 1 は、ハンドラーが手で `RunAsync` を呼ぶ作りから来ている
+- **クライアント**: オーナーは、サーバーとクライアントの作り方をそろえ、同じ共有インターフェースから両側を作ることを選んだ(2026-11-07)。VolTech-gRPC 版でも、クライアントのラッパーは生成している。今の `ApiServiceBase` は `[SkipAuth]`・`[NoSideEffects]` を実行時のリフレクションで読んでおり、IL2CPP で読めるかが未確認(`docs/index.md`)。生成時に読めば、この項目が無くなる
+
+`docs/designs/implementation/client.md` は「今の規模では手間に見合わない」として生成を見送っていた。サーバーの生成で同じジェネレーターを作ることになったので、クライアントを足す手間は小さくなる。この判断を置き換える。
+
 ## Goals
 
-*   `IApiResponse<TCommon>` を実装したレスポンスで `Common` が詰められない形を、コードで書けなくする。アプリは生成された基底クラスの `TxContext` を受け取るメソッドを実装し、`RunAsync` を手で呼ばない
+*   生成された基底クラスを使う限り、`IApiResponse<TCommon>` を実装したレスポンスで `Common` が詰められない形を書けなくする。アプリは `TxContext` を受け取るメソッドを実装し、`RunAsync` を手で呼ばない。`ServiceBase<T>` の直接継承はアプリのテストで止める
 *   共有インターフェースから、サーバーの基底クラスとクライアントのラッパーを同じジェネレーターで生成する。`[SkipAuth]`・`[NoSideEffects]` は生成時に読み、クライアントの実行時のリフレクションをやめる
 *   保存済みのレスポンスを今の型として読めないときの、再送の振る舞いを決め、仕様に書く
 *   クライアントの共通レスポンス項目の反映の公開 API を、基盤が `TCommon` の中身を知らない前提に合う最小の形にする
 *   クライアントが付けるヘッダーを `IClientFilter` に移す。ヘッダーの名前・値・付く条件、再送で同じ `x-request-id` を使うことは変えない
 *   AOT(IL2CPP)で動く前提(使ってよいリフレクション・ジェネリック)を書き、確かめる方法を決める
-*   変えた振る舞いを、サーバー(`tests/VolTech.Server.Tests`)と EditMode(`Tests/EditMode`)のテストで確かめる
+*   変えた振る舞いを、サーバー(`tests/VolTech.Server.Tests`)と EditMode(`Tests/EditMode`)のテストで確かめる。ジェネレーターは、生成結果とコンパイルエラーをテストする
 
 ## Non-Goals
 
@@ -87,7 +95,7 @@ MagicOnion の公式ドキュメントでは、呼び出しに共通するヘッ
 Technical Plan の節で、選択肢を挙げてオーナーが決める。
 
 *   **Q1(解決)**: `Common` が詰められないレスポンスは、実行時に検査せず、ハンドラーをコード生成で包んで書けなくする。生成はクライアントのラッパーも含む両側(2026-11-07)
-*   **Q2(解決)**: 保存済みのレスポンスを今の型として読めないときは、例外のまま `INTERNAL` にする。コードは足さず、動きを仕様に書く。処理はコミット済みなので、再送は成功させられない。タイトルに戻れば、サインインで全件を取り直せる。値がずれて読めた場合は検出しない(2026-11-07)
+*   **Q2(解決)**: 保存済みのレスポンスを今の型として読めないときは、例外のまま `INTERNAL` にする。コードは足さず、動きを仕様に書く。処理はコミット済みなので、再送は成功させられない。タイトルに戻れば、サインインで全件を取り直せる。その応答の通知は失われる。値がずれて読めた場合は検出しない(2026-11-07)
 *   **Q3(解決)**: クライアントの反映処理は、`TCommon` を受け取る 1 つにまとめる。player_diff → バッジ → 通知の順は、アプリが守る取り決めにする。VolTech-gRPC 版と名前はそろわなくなる(2026-11-07)
 *   **Q4(解決)**: ヘッダーは全部 `IClientFilter` で付け、公式の書き方に合わせる。トークンの取得は `ApiCore` に残し、取得した値と `x-request-id` を `AsyncLocal` の入れ物でフィルターへ渡す。締め切りとキャンセルは `WithOptions` に残る(2026-11-07。レビューの指摘を受けて、取得まで移す形から直した)
 *   **Q5(解決)**: アプリは `IClientFilter` を足せない。フィルターは基盤のものだけで、基盤のヘッダーのフィルターが必ず先頭になる。Monitor(設計書 4)も基盤の内部で足す。必要になったら、基盤より内側に足す口を作る(2026-11-07)
@@ -101,7 +109,7 @@ Technical Plan の節で、選択肢を挙げてオーナーが決める。
 
 *   **Given**: アプリが共有インターフェース `IGachaService` を持ち、`IApiResponse<AppCommon>` のレスポンス型を返す
 *   **When**: `[GenerateVoltechService(typeof(IGachaService))] public abstract partial class GachaServiceBase;` を書き、`GachaService : GachaServiceBase` で `DrawAsync(TxContext tx, DrawRequest request)` を実装する
-*   **Then**: `RunAsync` を手で呼ばなくても、トランザクション・冪等性・`Common` が必ず効く。実装しなければコンパイルが通らない。外で詰め替える書き方はできない
+*   **Then**: `RunAsync` を手で呼ばなくても、トランザクション・冪等性・`Common` が必ず効く。実装しなければコンパイルが通らない。この基底クラスを使う限り、外で詰め替える書き方はできない
 
 ### CUJ 2: クライアントから RPC を呼び、反映する
 
@@ -113,13 +121,13 @@ Technical Plan の節で、選択肢を挙げてオーナーが決める。
 
 *   **Given**: 持っているトークンがサーバーで無効になっている
 *   **When**: 認証が要る RPC を呼ぶ
-*   **Then**: サーバーが `UNAUTHENTICATED` を返す。`ApiCore` はフィルターが使ったトークンを `Invalidate` に渡し、同じ `x-request-id` で 1 回だけ送り直す。動きは今と同じ
+*   **Then**: サーバーが `UNAUTHENTICATED` を返す。`ApiCore` は使ったトークンを `Invalidate` に渡し、同じ `x-request-id` で 1 回だけ送り直す。動きは今と同じ
 
 ### CUJ 4: デプロイをまたいで再送する
 
 *   **Given**: 保存済みのレスポンスを、新しい型として読めない
 *   **When**: クライアントが同じ `x-request-id` で再送する
-*   **Then**: サーバーは `INTERNAL` を返す。処理はコミット済みなので再実行しない。タイトルに戻ってサインインすれば、全件を取り直せる
+*   **Then**: サーバーは `INTERNAL` を返す。処理はコミット済みなので再実行しない。`INTERNAL_ERROR` の既定は Retry だが、送り直しても同じ `x-request-id` で必ず失敗する。タイトルに戻ってサインインすれば全件を取り直せる。その応答の通知は失われる
 
 ## Technical Plan (Architecture)
 
@@ -134,6 +142,7 @@ Technical Plan の節で、選択肢を挙げてオーナーが決める。
 クライアント                                  サーバー
 GachaApi.DrawAsync
   → ApiCore(順番待ち・再送のループ)
+    → トークンを取る → 締め切りを計算する
     → ApiCallContext を AsyncLocal に入れる
     → client.WithOptions(締め切り・キャンセル)
       → ApiHeaderFilter(先頭。ヘッダーを付ける) → RPC
@@ -170,7 +179,8 @@ abstract partial class GachaServiceBase : ServiceBase<IGachaService>, IGachaServ
 *   `ITransactions.RunAsync` は public のまま残す。生成したコードはアプリのアセンブリに入るため
 *   `ThrowIfUnfilled` は残す。`AddCommonResponse` の登録忘れと `TCommon` の食い違いは、生成では防げない
 *   基底クラスに RPC の実装を置いても、`RpcSettings` は属性を読める(`FilterTests` の `SkipAuth_OnInterfaceMethod_WorksWhenImplementedInBaseClass` で確かめ済み)
-*   **迂回の防止**: `ServiceBase<T>` を直接継承すれば `RunAsync` を迂回できる。依存の向きのテストの例を利用ガイドに書き、アプリのテストで止める。基盤の `DeviceService` は手書きのまま
+*   **迂回の防止**: `ServiceBase<T>` を直接継承すれば `RunAsync` を迂回できる。依存の向きのテストの例を利用ガイドに書き、アプリのテストで止める。手書きが要るサービスは、テストの除外一覧に書く。基盤の `DeviceService` は手書きのまま
+*   **メソッド単位のフィルター**: アプリが `DrawAsync(TxContext, ...)` に付けたフィルター属性は、MagicOnion に読まれないおそれがある(`ServiceContext.AttributeLookup` は RPC のメソッドの情報。未確認)。確かめて、効かなければ Non-Goals に書く
 
 #### クライアントの生成物
 
@@ -178,7 +188,7 @@ abstract partial class GachaServiceBase : ServiceBase<IGachaService>, IGachaServ
 
 ```text
 sealed partial class GachaApi : ApiServiceBase<IGachaService>
-  public GachaApi(ApiCore core)                      // core が作ったクライアントを使う
+  public GachaApi(ApiCore core)                      // ApiClientFactory で作ったクライアントを使う
   public GachaApi(ApiCore core, IGachaService client) // テスト用の偽物を渡す
   public UniTask<ApiResult<DrawResponse>> DrawAsync(
       DrawRequest request, IEnumerable<ErrorCode> handledCodes = null, bool notifyActivity = true)
@@ -186,46 +196,56 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 
 *   `[SkipAuth]`・`[NoSideEffects]` は生成時に読み、`RpcSettings` の値を生成コードに埋め込む。`RpcSettings.CreateAll` のリフレクションと、`docs/index.md` の未確認の項目(属性を IL2CPP で読めるか)は無くなる
 *   引数が複数の RPC は、今と同じくタプルにまとめて `InvokeAsync` に渡す
-*   手書きのラッパーの形(`ApiServiceBase` を継承して `InvokeAsync` を呼ぶ)は、基盤の公開 API から外す
+*   生成コードはアプリのアセンブリに入るので、`ApiServiceBase` の protected メンバーと `RpcSettings` の値を渡す口は公開のまま要る。手書きのラッパーも書けるが、利用ガイドでは生成だけを案内する
+*   テスト用のコンストラクターはフィルターを通らない。偽のクライアントはヘッダーを送らないので問題にならない。本物のクライアントを渡す形は案内しない
 
 ### 2. クライアントのヘッダー付与(`IClientFilter`)
 
-*   **クライアントを作る場所**: アプリは `CallInvoker`・シリアライザー・`IMagicOnionClientFactoryProvider`(アプリごとの生成物)を `ApiCoreBuilder` に 1 回渡す。`ApiCore` が基盤のフィルターを付けて `MagicOnionClient.Create<T>` を呼ぶ。これでフィルターの渡し忘れが無くなる
+*   **クライアントを作る部品**: 新しい公開の型 `ApiClientFactory` が、`CallInvoker`・シリアライザー・`IMagicOnionClientFactoryProvider`(アプリごとの生成物)・`ApiCoreOptions` を受け取り、基盤のフィルターを付けて `MagicOnionClient.Create<T>` を呼ぶ。`ApiCore` より先に作るので、`IDeviceService` のクライアントも同じ部品で作れる。`ApiCoreBuilder` にも渡す。これでフィルターの渡し忘れが無くなり、Monitor(設計書 4)はトークンの発行も見られる
 *   **送る順番**: `ApiCore` が今と同じ順で動く。トークンを取る → 締め切りを計算する → 入れ物に値を入れる → `call(...)` で送る
-*   **呼び出しごとの入れ物**: `ApiCallContext`(内部の型)が `Token`・`RequestId` を持つ。`ApiCore` が `call(...)` の直前に `AsyncLocal` に入れ、`finally` で外す
+*   **呼び出しごとの入れ物**: `ApiCallContext`(内部の型)が `Token`・`RequestId`・`GameDate` を持つ。アプリのバージョンは固定なので、フィルターが `ApiCoreOptions` から読む。`ApiCore` が `call(...)` の直前に `AsyncLocal` に入れ、`finally` で外す
 *   **読む順番**: `ApiHeaderFilter` は `SendAsync` の入り口で入れ物を読む。フィルターは何も待たないので、読むのも付けるのも `call(...)` の中で終わる。入れ物が空なら例外にする(黙ってヘッダーなしで送らない)
 *   **付けるヘッダー**: `authorization`(トークンがあるときだけ)、`x-request-id`(あるときだけ)、アプリのバージョン、`x-game-date`(持っているときだけ)。名前・値・条件は今の `CreateHeaders` と同じ
 *   **トークン**: 取得・`Invalidate`・再認証は `ApiCore` のまま。`CorruptedAccountDataException` などはフィルターを通らないので、`ACCOUNT_*` の扱いは変わらない
 *   **`WithOptions` に残るもの**: 締め切りとセッションのキャンセルだけ
-*   **`IDeviceService`**: `DeviceTokenProvider` が直接呼ぶ今の形のまま。フィルターは通さない。トークンを取るためのトークンが要らないため
+*   **`IDeviceService`**: `DeviceTokenProvider` も `ApiClientFactory` で作ったクライアントを呼ぶ。トークンなどが空の `ApiCallContext` を入れて呼ぶので、付くのはアプリのバージョンだけで、今と同じ
 *   **未確認**: フィルターが `call(...)` の中で同期的に始まることを確かめたのは、.NET の動的クライアントだけ。ソースジェネレーターのクライアント(Sandbox の `SmokeClient`)で確かめる
-*   **テストの分け方**: ヘッダーを作る処理を内部の `ApiHeaderWriter` に置き、`ApiHeaderFilter` は薄くする。偽のクライアントはフィルターを通らないので、`ApiCoreTests` の偽物が `ApiHeaderWriter` を呼び、今のテストと同じヘッダーを確かめる
+*   **テストの分け方**: 偽の `CallInvoker` と本物の `MagicOnionClient` で `ApiHeaderFilter` を通すテストを足し、ヘッダー・再認証・再送で同じ `x-request-id` を使うことをこの経路で確かめる。偽のクライアントを使う今の `ApiCoreTests` はフィルターを通らないので、ヘッダーの確認はこちらへ移す
 
 ### 3. 共通レスポンス項目の反映
 
 *   `IPlayerDiffApplier<TCommon>`・`IBadgeApplier<TCommon>`・`INotificationApplier<TCommon>` を消し、`ICommonResponseApplier<TCommon>`(`UniTask ApplyAsync(TCommon common)`)を 1 つ置く
 *   `ApiCoreBuilder.WithCommonResponseApplier<TCommon>(applier)` で渡す。省略できる
 *   `Build` での `TCommon` の食い違いの検査は消す。1 つしか渡せないので起きない
-*   `CommonApplier` は、`Name` と `CommonType` を消し、「レスポンスから `Common` を取り出して渡す」だけの内部の部品にする
+*   `CommonApplier` は消す。`WithCommonResponseApplier` の中のクロージャーが、レスポンスから `Common` を取り出して渡す
 *   反映の位置と例外の扱いは今と同じ: レスポンスヘッダーを反映した後、順番待ちの中で呼ぶ。古いセッションでは呼ばない。例外は `CLIENT_ERROR` にして共通エラーハンドラーに渡し、送り直さない
 *   ログの文言から「どの反映処理か」は無くなる。スタックトレースで分かる
 *   player_diff → バッジ → 通知の順は、仕様の「項目ごとの決めごと」(アプリが守る取り決め)に移す
 
 ### 4. 保存済みのレスポンス
 
-コードは変えない。読めないときは `Deserialize` の例外が `RpcLogFilter` で `INTERNAL` になる。仕様に次を書く: 再送は失敗する。処理はコミット済みなので再実行しない。タイトルに戻れば、サインインで取り直せる。型のキーの意味を変えたデプロイの前後では起こりうる。値がずれて読めた場合は検出しない。
+コードは変えない。読めないときは `Deserialize` の例外が `RpcLogFilter` で `INTERNAL` になる。仕様に次を書く: 再送は失敗する。処理はコミット済みなので再実行しない。Retry では直らず、タイトルに戻るまで同じ失敗が続く。タイトルに戻れば、サインインで取り直せる。その応答の通知は失われる。型のキーの意味を変えたデプロイの前後では起こりうる。値がずれて読めた場合は検出しない。
 
 ### 5. AOT(IL2CPP)で動く前提
 
 *   `TCommon` は `class` に限る(参照型なのでコードを共有できる)
 *   `response is IApiResponse<TCommon>` は、インターフェースの型の判定で、実行時のコード生成を使わない
-*   フォーマッターは、具体的なレスポンスの型ごとに MessagePack のジェネレーターが作る。`IApiResponse<>` そのもののフォーマッターは要らない
+*   フォーマッターは、具体的なレスポンスの型ごとに MessagePack のジェネレーターが作る。`IApiResponse<>` そのもののフォーマッターは要らないはず(推測。下で確かめる)
 *   クライアントの実行時のリフレクションは、ラッパーの生成で無くなる
-*   上の 3 つと `AsyncLocal` の読み取りは、Windows の IL2CPP のプレイヤーで確かめる(Verification Plan)
+*   `AsyncLocal` は `ApiHeaderFilter` が同期的に読むだけなので、待機をまたいだ流れには頼らない
+
+`TCommon` の判定、フォーマッター、`AsyncLocal` の読み取りの 3 つを、Windows の IL2CPP のプレイヤーで確かめる。iOS の AOT は Mac で確かめる(RFC の未確認の項目)。どちらも Verification Plan に書く。
 
 ### 変えないもの
 
 ヘッダーの名前と値、ErrorInfo、予約エラー、冪等性の意味、`Common` が null なら変化なしという意味、再送で同じ `Common` を返すこと、`ICommonResponseCollector<TCommon>`・`AddCommonResponse`・`TxContext.GetCollector`。
+
+## Risks
+
+*   **本体は全部トランザクションの中で動く**: 接続と、冪等性の対象なら `last_responses` の行ロックを持ったまま動く。本体で外部 I/O をしない(Cloud SQL の接続上限に関わる。RFC の Analysis 10)。外で処理が要る RPC が出たら、そのサービスを手書きにする。Uta の 7 RPC は今も全部を `RunAsync` の中で動かしている
+*   **同期開始への依存**: `ApiHeaderFilter` が `call(...)` の中で同期的に始まらないと、入れ物を読めない。読めなければ例外になるので、黙ってヘッダーなしで送ることはない。ソースジェネレーターのクライアントでの確認は実装の最初に行う
+*   **コミットした DLL の古さ**: ジェネレーターのソースを直して DLL のコミットを忘れると、Unity だけ古い生成物で動く
+*   **属性の読み方が 2 つになる**: サーバーは実行時のリフレクション、クライアントはジェネレーターで `[SkipAuth]`・`[NoSideEffects]` を読む。食い違わないことをテストで確かめる
 
 --------------------------------------------------------------------------------
 
