@@ -16,7 +16,7 @@ VolTech-MagicOnion/
     │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
     │   ├─ Runtime/Client/             ApiCore など + asmdef
     │   └─ Tests/EditMode/             Runtime/Client のテスト + asmdef
-    ├─ Directory.Packages.props        Unity 側のパッケージの版(NuGetForUnity の確認に使う)
+    ├─ Directory.Build.props、Directory.Packages.props  空。Unity が作る csproj にリポジトリ直下の設定を効かせない
     └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する。Assets/E2E に PlayMode テスト
 ```
 
