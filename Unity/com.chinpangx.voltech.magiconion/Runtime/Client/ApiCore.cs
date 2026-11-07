@@ -15,7 +15,7 @@ namespace VolTech.Client
     /// </summary>
     /// <remarks>
     /// 処理の流れ: InvokeAsync(進行中の通知) → SendInQueueAsync(順番待ち) → SendWithRetryAsync(再認証・再送のループ) → SendOnceAsync(1回の送信)。
-    /// 成功したら CompleteAsync でレスポンスヘッダーと共通レスポンス項目(player_diff → バッジ → 通知)を反映し、
+    /// 成功したら CompleteAsync でレスポンスヘッダーと共通レスポンス項目を反映し、
     /// 失敗したら HandleErrorAsync でエラーハンドラーに渡す。
     /// エラーハンドラーを呼ぶ間(エラーハンドラーの順番待ちを含む)は、その呼び出しの分を進行中から外し、Retry で送り直すときに戻す。
     /// エラーハンドラーがタイトル・ホームに戻ると決めたら、先にセッションを終わらせ(古い通信を止め)、
@@ -30,8 +30,8 @@ namespace VolTech.Client
         private readonly IErrorNavigator navigator;
         private readonly IReadOnlyList<IApiActivityHandler> activityHandlers;
 
-        // 共通レスポンス項目の反映処理。反映する順(player_diff → バッジ → 通知)に、渡されたものだけを持つ
-        private readonly IReadOnlyList<CommonApplier> commonAppliers;
+        // 共通レスポンス項目の反映処理。null なら反映しない
+        private readonly Func<object, UniTask> applyCommonResponse;
 
         // null ならログを出さない。?. で呼ぶので、ログの文字列も作らない
         private readonly IApiLogger logger;
@@ -72,7 +72,7 @@ namespace VolTech.Client
             navigator = builder.Navigator;
             // ビルダーを使い回して足されても変わらないように写す
             activityHandlers = builder.ActivityHandlers.ToArray();
-            commonAppliers = builder.CommonAppliers().ToArray();
+            applyCommonResponse = builder.ApplyCommonResponse;
         }
 
         /// <summary>
@@ -375,38 +375,29 @@ namespace VolTech.Client
                 : (ApiResult<TResponse>.Failure(applyError), decision);
         }
 
-        // 共通レスポンス項目を player_diff → バッジ → 通知の順に反映する。順番待ちの中で行うので、次の API が送られる時点で
-        // 必ず反映が終わっている。反映処理で例外が起きたら、残りは反映せずに CLIENT_ERROR として共通エラーハンドラーに渡し、
-        // そのエラーとハンドラーが決めた動きを返す
+        // 共通レスポンス項目を反映する。順番待ちの中で行うので、次の API が送られる時点で必ず反映が終わっている。
+        // 反映処理で例外が起きたら CLIENT_ERROR として共通エラーハンドラーに渡し、そのエラーとハンドラーが決めた動きを返す
         private async UniTask<(ApiError Error, ErrorDecision Decision)> ApplyCommonFieldsAsync<TResponse>(
             RpcSettings settings,
             TResponse response,
             int epoch,
             CallActivity activity)
         {
-            // 反映処理の TCommon は Build で 1 つに揃えてあるので、どれで取り出しても同じ
-            var common = commonAppliers.Count == 0 ? null : commonAppliers[0].Extract(response);
-            if (common == null)
+            if (applyCommonResponse == null)
             {
                 return (null, ErrorDecision.Stay);
             }
 
-            var applying = commonAppliers[0].Name;
             try
             {
-                foreach (var applier in commonAppliers)
-                {
-                    applying = applier.Name;
-                    await applier.ApplyAsync(common);
-                }
-
+                await applyCommonResponse(response);
                 return (null, ErrorDecision.Stay);
             }
             catch (Exception exception)
             {
                 // 反映処理の例外はアプリの実装のバグ。サーバーの処理は成功しているので送り直さない。
                 // タイトルに戻ってサインインで全件を取り直し、サーバーとの食い違いを解消してもらう
-                logger?.LogException($"[Api] {settings.MethodName} failed to apply {applying} of {typeof(TResponse).Name}", exception);
+                logger?.LogException($"[Api] {settings.MethodName} failed to apply the common response of {typeof(TResponse).Name}", exception);
                 var error = ErrorConverter.FromClientException(exception, errorPolicy);
                 var decision = await HandleErrorAsync(error, epoch, activity);
                 return (error, decision);

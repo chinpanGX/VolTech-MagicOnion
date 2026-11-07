@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using Cysharp.Threading.Tasks;
+using VolTech.Server.Abstractions;
 
 namespace VolTech.Client
 {
@@ -36,46 +37,34 @@ namespace VolTech.Client
         internal IApiLogger Logger { get; private set; }
         internal ServerClock ServerClock { get; private set; }
         internal IReadOnlyList<IApiActivityHandler> ActivityHandlers => activityHandlers;
-        internal CommonApplier PlayerDiffApplier { get; private set; }
-        internal CommonApplier BadgeApplier { get; private set; }
-        internal CommonApplier NotificationApplier { get; private set; }
+
+        // レスポンスを受け取り、Common があれば反映する。null なら反映しない
+        internal Func<object, UniTask> ApplyCommonResponse { get; private set; }
 
         /// <summary>
-        /// 成功したレスポンスの player_diff を反映する処理を渡す。共通レスポンス項目の中で最初に呼ぶ。
+        /// 成功したレスポンスの共通レスポンス項目を反映する処理を渡す。呼び出し側に返す前に呼ぶ。
         /// </summary>
-        /// <param name="applier">player_diff の反映処理。null なら反映しない。</param>
-        /// <typeparam name="TCommon">アプリの共通レスポンス項目の型。3 つの反映処理で同じにする。</typeparam>
+        /// <remarks>
+        /// レスポンスが IApiResponse&lt;TCommon&gt; で、Common が null でないときだけ呼ぶ。
+        /// 違う TCommon のレスポンスは反映しない。1 つのアプリの TCommon は 1 つなので、食い違いは検出しない。
+        /// </remarks>
+        /// <param name="applier">共通レスポンス項目の反映処理。null なら反映しない。</param>
+        /// <typeparam name="TCommon">アプリの共通レスポンス項目の型。</typeparam>
         /// <returns>このビルダー。</returns>
-        public ApiCoreBuilder WithPlayerDiffApplier<TCommon>(IPlayerDiffApplier<TCommon> applier)
+        public ApiCoreBuilder WithCommonResponseApplier<TCommon>(ICommonResponseApplier<TCommon> applier)
             where TCommon : class
         {
-            PlayerDiffApplier = applier == null ? null : CommonApplier.Create<TCommon>("player_diff", applier.ApplyAsync);
-            return this;
-        }
+            if (applier == null)
+            {
+                ApplyCommonResponse = null;
+                return this;
+            }
 
-        /// <summary>
-        /// 成功したレスポンスのバッジを反映する処理を渡す。player_diff の次に呼ぶ。
-        /// </summary>
-        /// <param name="applier">バッジの反映処理。null なら反映しない。</param>
-        /// <typeparam name="TCommon">アプリの共通レスポンス項目の型。3 つの反映処理で同じにする。</typeparam>
-        /// <returns>このビルダー。</returns>
-        public ApiCoreBuilder WithBadgeApplier<TCommon>(IBadgeApplier<TCommon> applier)
-            where TCommon : class
-        {
-            BadgeApplier = applier == null ? null : CommonApplier.Create<TCommon>("badges", applier.ApplyAsync);
-            return this;
-        }
-
-        /// <summary>
-        /// 成功したレスポンスの通知を積む処理を渡す。共通レスポンス項目の中で最後に呼ぶ。
-        /// </summary>
-        /// <param name="applier">通知の反映処理。null なら反映しない。</param>
-        /// <typeparam name="TCommon">アプリの共通レスポンス項目の型。3 つの反映処理で同じにする。</typeparam>
-        /// <returns>このビルダー。</returns>
-        public ApiCoreBuilder WithNotificationApplier<TCommon>(INotificationApplier<TCommon> applier)
-            where TCommon : class
-        {
-            NotificationApplier = applier == null ? null : CommonApplier.Create<TCommon>("notifications", applier.ApplyAsync);
+            ApplyCommonResponse = response =>
+            {
+                var common = (response as IApiResponse<TCommon>)?.Common;
+                return common == null ? UniTask.CompletedTask : applier.ApplyAsync(common);
+            };
             return this;
         }
 
@@ -135,36 +124,9 @@ namespace VolTech.Client
         /// 渡した部品で ApiCore を作る。
         /// </summary>
         /// <returns>作った ApiCore。アプリで1つにする(順番待ちとセッションを持つため)。</returns>
-        /// <exception cref="InvalidOperationException">共通レスポンス項目の反映処理の TCommon が食い違っているとき。</exception>
         public ApiCore Build()
         {
-            var commonTypes = CommonAppliers().Select(a => a.CommonType).Distinct().ToArray();
-            if (commonTypes.Length > 1)
-            {
-                throw new InvalidOperationException(
-                    $"共通レスポンス項目の反映処理の型引数が食い違っている({string.Join(", ", commonTypes.Select(t => t.Name))})。1 つの型にする。");
-            }
-
             return new ApiCore(this);
-        }
-
-        // 反映する順(player_diff → バッジ → 通知)に、渡された反映処理だけを返す
-        internal IEnumerable<CommonApplier> CommonAppliers()
-        {
-            if (PlayerDiffApplier != null)
-            {
-                yield return PlayerDiffApplier;
-            }
-
-            if (BadgeApplier != null)
-            {
-                yield return BadgeApplier;
-            }
-
-            if (NotificationApplier != null)
-            {
-                yield return NotificationApplier;
-            }
         }
     }
 }
