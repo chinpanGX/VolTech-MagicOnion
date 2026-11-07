@@ -20,7 +20,7 @@ var core = ApiCore.CreateBuilder(
     .WithErrorNavigator(navigator)
     .WithLogger(logger)
     .AddActivityHandler(loadingIndicator)
-    .WithCommonResponseApplier(new AppCommonApplier(repository, badgeStore, queue))   // ICommonResponseApplier<AppCommon>
+    .WithCommonResponseApplier(new AppCommonResponseApplier(repository, badgeStore, queue))   // ICommonResponseApplier<AppCommon>
     .Build();
 
 var gachaClient = core.CreateClient<IGachaService>();

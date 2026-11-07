@@ -546,7 +546,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 21. `Unity/com.chinpangx.voltech.magiconion/Runtime/Client/ApiClientExtensions.cs` (Create)
 
 *   **Type / Scope**: 公開 API
-*   **Proposed Changes**: `T : IService<T>` の拡張メソッド `WithHandledCodes(params ErrorCode[] codes)` と `WithoutActivity(params ErrorCode[] codes)`。`x-voltech-call` を `WithHeaders` で渡す
+*   **Proposed Changes**: `T : IService<T>` の拡張メソッド `WithHandledCodes(params ErrorCode[] codes)` と `WithoutActivity(params ErrorCode[] codes)`。`x-voltech-call` を `WithHeaders` で渡す。ヘッダーを読む internal の `ReadCallSettings` もここに置く
 
 #### 22. `Unity/com.chinpangx.voltech.magiconion/Runtime/Client/ApiResultExtensions.cs` (Create)
 
@@ -566,7 +566,7 @@ var result = await gachaClient.WithoutActivity().DrawAsync(request).ToResult();
 #### 25. `Unity/com.chinpangx.voltech.magiconion/Runtime/Client/ApiCore.cs` (Modify)
 
 *   **Type / Scope**: 共通処理
-*   **Proposed Changes**: 段階 5: `commonAppliers` を `Func<object, UniTask>` 1 つ(`ApiCoreBuilder.ApplyCommonResponse`)に変え、`ApplyCommonFieldsAsync` のループと `applying` を消す。段階 7: `CreateBuilder` の引数を `(CallInvoker callInvoker, IMagicOnionSerializerProvider serializerProvider, IMagicOnionClientFactoryProvider clientFactoryProvider, ApiCoreOptions options, ITokenProvider tokenProvider, IErrorPolicyProvider errorPolicy, ICommonErrorHandler errorHandler)` に変える。`ApiCallInvoker` を 1 つ持つ。`CreateClient<T>()` を足す。`RpcSettings.CreateAll(typeof(T))` で `ApiCallFilter` を作り、`MagicOnionClient.Create<T>(ApiCallInvoker, serializerProvider, フィルター, clientFactoryProvider)` を呼ぶ(7.11.0 にこの形があることをリフレクションで確かめた。2026-11-07)。`InvokeAsync` を internal の `SendAsync(RpcSettings, RequestContext, Func<RequestContext, ValueTask<ResponseContext>>, IReadOnlyCollection<ErrorCode>, bool)` に変え、処理は private のまま残す。`SendOnceAsync` は `ApiCallContext` を作って `ApiCallInvoker` の `AsyncLocal` に入れ、`next(context)` の `ValueTask` を受け取った直後(`await` の前)に null に戻す。`CreateHeaders` を消し、ヘッダーの組み立ては `ApiCallInvoker` に移す。`ApplyCommonFieldsAsync` は `ReadResponse` で読む。失敗は `ApiException` を投げ、古いセッションは `ApiError.Discarded()` の `ApiException` にする
+*   **Proposed Changes**: 段階 5: `commonAppliers` を `Func<object, UniTask>` 1 つ(`ApiCoreBuilder.ApplyCommonResponse`)に変え、`ApplyCommonFieldsAsync` のループと `applying` を消す。段階 7: `CreateBuilder` の引数を `(CallInvoker callInvoker, IMagicOnionSerializerProvider serializerProvider, IMagicOnionClientFactoryProvider clientFactoryProvider, ApiCoreOptions options, ITokenProvider tokenProvider, IErrorPolicyProvider errorPolicy, ICommonErrorHandler errorHandler)` に変える。`ApiCallInvoker` を 1 つ持つ。`CreateClient<T>()` を足す。`RpcSettings.CreateAll(typeof(T))` で `ApiCallFilter` を作り、`MagicOnionClient.Create<T>(ApiCallInvoker, serializerProvider, フィルター, clientFactoryProvider)` を呼ぶ(7.11.0 にこの形があることをリフレクションで確かめた。2026-11-07)。`InvokeAsync` を internal の `SendAsync(RpcSettings, RequestContext, Func<RequestContext, ValueTask<ResponseContext>>, IEnumerable<ErrorCode>, bool)` に変え、処理は private のまま残す。`SendOnceAsync` は `ApiCallContext` を作り、`ApiCallInvoker.Send` で送る。`Send` は `AsyncLocal` に値を入れて `next(context)` を呼び、`ValueTask` を受け取った直後(`await` の前)に null に戻す。`CreateHeaders` を消し、ヘッダーの組み立ては `ApiCallInvoker` に移す。`ApplyCommonFieldsAsync` は `ReadResponse` で読む。失敗は `ApiException` を投げ、古いセッションは `ApiError.Discarded()` の `ApiException` にする
 
 #### 26. `Unity/com.chinpangx.voltech.magiconion/Runtime/Client/ApiCoreBuilder.cs` (Modify)
 
