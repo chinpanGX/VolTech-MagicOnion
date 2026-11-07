@@ -16,6 +16,7 @@ VolTech-MagicOnion/
     │   ├─ Runtime/Abstractions/       共有ソースの実体 + asmdef
     │   ├─ Runtime/Client/             ApiCore など + asmdef
     │   └─ Tests/EditMode/             Runtime/Client のテスト + asmdef
+    ├─ Directory.Packages.props        Unity 側のパッケージの版(NuGetForUnity の確認に使う)
     └─ VolTech.Sandbox/                開発用の Unity 7 プロジェクト。パッケージを file: で参照する。Assets/E2E に PlayMode テスト
 ```
 
@@ -23,7 +24,7 @@ VolTech-MagicOnion/
 
 | プロジェクト | 中身 | Unity と共有 |
 | --- | --- | --- |
-| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数(`ReservedErrors`)、`BusinessException`、ヘッダー名の定数、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IDeviceService` と結果の型、`IApiResponse<TCommon>` | する(netstandard2.1) |
+| `VolTech.Server.Abstractions` | `ErrorCode`、予約エラーの定数(`ReservedErrors`)、`BusinessException`、ヘッダー名の定数、`ErrorMetadataKeys`、`RequestIdRules`、属性(`[SkipAuth]`・`[NoSideEffects]`)、`IDeviceService` と結果の型、`IApiResponse<TCommon>` | する(netstandard2.1) |
 | `VolTech.Server` | 下の表のフォルダーすべて | しない(net10) |
 
 | `VolTech.Server` のフォルダー | 中身 |
