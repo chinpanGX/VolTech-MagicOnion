@@ -373,6 +373,7 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 
 ### Risks
 
+*   **IL2CPP の確認が最後になる**: オーナーの決定で、A6・A5 と A1 の IL2CPP の分を段階 8 に回した。同期開始が IL2CPP だけで違えば、クライアントの変更が終わった後に Q4 を決め直す。.NET と Editor の結果が同じなら、起きる見込みは低いと見て受け入れる
 *   **本体は全部トランザクションの中で動く**: 本体は DB の接続を持ったまま動く。冪等性の対象の RPC なら、`last_responses` の行ロックも持つ。そのため本体で外部 I/O をしない(Cloud SQL の接続上限に関わる。RFC の Analysis 10)。トランザクションの外で処理が要る RPC が出たら、そのサービスを手書きにする。Uta の 7 RPC は今も全部を `RunAsync` の中で動かしている
 *   **手書きのサービスでは問題 1 が残る**: 手書きにする単位はサービスなので、1 RPC のためにサービスの全 RPC が保護を失う。RPC だけを別の共有インターフェースへ移すと、通信上のサービス名が変わる。手書きのサービスでは、`IApiResponse<>` を返す RPC のレスポンスを `RunAsync` の本体から返す規則を守る(利用ガイドに書く)。外部の検証が要る RPC(課金のレシートの検証など)で実際に使うことになる
 *   **直接継承を止めるテストはアプリに置く**: 基盤の完了の時点では効かない。Uta を移すときに足す
@@ -405,13 +406,13 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 ### 実装の順番
 
 1.  **設計書を承認する**: オーナーが承認してから実装に入る。Status を Approved にし、一覧に載せる(ファイル 1・2)
-2.  **未確認の項目を確かめる**(下の表)。A6 → A1・A5 → A2 → A3 → A4 の順に行う。本体のコードを直す前に行い、結果を設計書に戻す。確認に使うコードは手元に置き、該当する段階でコミットする
+2.  **IL2CPP を使わない項目を確かめる**(下の表)。A2 → A3 → A1 の Editor の分 → A4 の順に行う。本体のコードを直す前に行い、結果を設計書に戻す。確認に使うコードは手元に置き、該当する段階でコミットする。A6・A5 と A1 の IL2CPP の分は段階 8 で行う(2026-11-07 にオーナーが決定)
 3.  **ドキュメント**: `docs:` のコミットを先に置く(ファイル 1 の A1〜A6 の結果、ファイル 3〜13)
 4.  **反映処理**: 反映処理を 1 つにまとめる(ファイル 36・37 の「段階 4」、38、39、42 の `CommonResponseTests`)。`CommonApi` はこの段階では手書きのまま
 5.  **ジェネレーター**: プロジェクト、属性、テスト、DLL の配布(ファイル 14〜26)。`GeneratorTests` が `[GenerateVoltechService]` を、`RpcSettingsConsistencyTests` が `InternalsVisibleTo` を使うので、ファイル 25・26 はここに入れる
 6.  **サーバー**: 生成の利用(ファイル 27〜30)
 7.  **クライアントのラッパーとヘッダー**: `ApiClientFactory`・`ApiHeaderFilter`・`RpcSettings`・ラッパーの生成(ファイル 31〜35、36・37 の「段階 7」、40〜44)
-8.  **Sandbox**: AOT の確認(ファイル 45〜47)。Verification Plan を実行し、結果と実装で分かった API 名の違いを設計書と `docs/index.md` に戻す(ファイル 1・12)
+8.  **Sandbox**: A6 → A1 の IL2CPP の分・A5 の順に行い、AOT の確認(ファイル 45〜47)をする。Verification Plan を実行し、結果と実装で分かった API 名の違いを設計書と `docs/index.md` に戻す(ファイル 1・12)
 
 実装は 1 本のブランチで行い、段階ごとにテストが通る形でコミットする。Uta の変更はこの設計書に含まない。基盤の版を上げるときに、Uta のリポジトリで 7 RPC のサービスとラッパー、組み立ての処理を移す。
 
@@ -420,7 +421,7 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 | # | 確かめること | 方法 | 結果ごとの対応 |
 | --- | --- | --- | --- |
 | A6 | Unity Test Framework のテストを、Windows の IL2CPP のプレイヤーで動かせるか(7000.0.0a12、`-testPlatform StandaloneWindows64`) | 1 件だけのテストで試す | 動かなければ、ファイル 46・47 のとおり作る。動けば、A1・A5 はそのテストと同じ仕組みで確かめ、`AotCheck` の代わりに標準のプレイヤーテストを使う案(asmdef の分け方と Verification Plan の書き直し)をオーナーに出す。決まるまでファイル 46・47 は作らない |
-| A1 | ソースジェネレーターのクライアントで、先頭のフィルターが RPC のメソッドの呼び出しの中で同期的に始まるか。`AsyncLocal` を読めるか。ヘッダーを渡さず締め切りだけの `CallOptions` でも、`context.CallOptions.Headers` が null でないか。`[MagicOnionClientGeneration]` に書いていないインターフェースで `MagicOnionClient.Create<T>` がどう失敗するか | Sandbox の `SmokeClient` と同じ生成クライアントを、偽の `CallInvoker` で呼ぶ(ファイル 45〜47)。Editor と Windows の IL2CPP のプレイヤーの両方で動かす | 同期開始か `AsyncLocal` の読み取りが違えば: ヘッダーの移行を止め、Q4 をオーナーと決め直す(Alternative L か K)。ラッパーの生成と `ApiClientFactory` の形も、その結果で決め直す。反映処理とサーバーの生成は Q4 に左右されないので進める。`Headers` が null なら: 移行は止めず、`ApiCore` と `DeviceTokenProvider` が空の `Metadata` を渡す。`Create<T>` の失敗の仕方は、結果を利用ガイドに書く |
+| A1 | ソースジェネレーターのクライアントで、先頭のフィルターが RPC のメソッドの呼び出しの中で同期的に始まるか。`AsyncLocal` を読めるか。ヘッダーを渡さず締め切りだけの `CallOptions` でも、`context.CallOptions.Headers` が null でないか。`[MagicOnionClientGeneration]` に書いていないインターフェースで `MagicOnionClient.Create<T>` がどう失敗するか | `SmokeClient` と同じくソースジェネレーターで作ったクライアントを、偽の `CallInvoker` で呼ぶ。Editor の分は A3 の EditMode のテストで確かめる。IL2CPP の分は段階 8 で確かめる | 同期開始か `AsyncLocal` の読み取りが違えば: ヘッダーの移行を止め、Q4 をオーナーと決め直す(Alternative L か K)。ラッパーの生成と `ApiClientFactory` の形も、その結果で決め直す。反映処理とサーバーの生成は Q4 に左右されないので進める。`Headers` が null なら: 移行は止めず、`ApiCore` と `DeviceTokenProvider` が空の `Metadata` を渡す。`Create<T>` の失敗の仕方は、結果を利用ガイドに書く |
 | A5 | Windows の IL2CPP のプレイヤーで、`IApiResponse<TCommon>` を実装したレスポンスの MessagePack の往復と、`response is IApiResponse<TCommon>` が動くか | A1 と同じ `AotCheck` に入れる(ファイル 45〜47) | フォーマッターが動かなければ MessagePack の設定を直す。型の判定が動かなければ、反映処理の渡し方をオーナーと決め直す。影響はクライアントの反映処理に収まる |
 | A2 | アプリの `protected override` のメソッドに付けたフィルター属性が効くか。RPC の `public` メソッドと同じ名前の `protected abstract` メソッドがあっても、MagicOnion が RPC を正しく登録するか | 生成物と同じ形のサービスを手で書き、`FilterTests` で動かす(ファイル 29)。共有インターフェースに `[SkipAuth]` を付け(付けないと認証のフィルターで先に `UNAUTHENTICATED` になる)、DB を使わない。業務エラーを投げるフィルターを `protected override` に付け、そのエラーが返れば、属性が効いていて RPC も登録されている。`Unimplemented` なら登録されていない。`RunAsync` の接続の失敗(`INTERNAL`)なら属性が効いていない | 属性が効かなければ Non-Goals に書き、利用ガイドにも書く。名前が使えなければ、メソッドの名前を変える案をオーナーに出す(CUJ 1 が変わる) |
 | A3 | 本物の `MagicOnionClient` と偽の `CallInvoker` を EditMode で動かせるか | `FakeCallInvoker` を作り、`MagicOnionClient.Create<T>` にテスト用のフィルターを渡す最小のテストを書く(ファイル 43 の `FakeCallInvoker`、44)。`ApiClientFactory` は段階 7 で作るので、ここでは使わない | 動かなければ、テストの分け方をオーナーと決め直す |
@@ -680,7 +681,7 @@ sealed partial class GachaApi : ApiServiceBase<IGachaService>
 #### 46. `Unity/VolTech.Sandbox/Assets/Smoke/AotCheck.cs` (Create)
 
 *   **Type / Scope**: 確認用のコード(A6 で標準のプレイヤーテストが動いたら作らない)
-*   **Proposed Changes**: サーバーが無くても動くよう、偽の `CallInvoker` で確かめる。パッケージのテストのコードは Sandbox から見えないので、ファイル 43 と同じ振る舞いの小さい偽物をこのファイルの中に持つ。最初は A1 と A5 の確認だけを書く。起動時の入口は `[RuntimeInitializeOnLoadMethod]`。クライアントができたら、`[GenerateVoltechApi(typeof(ISmokeService))]` のラッパーを通し、`ApiCore`・`ApiHeaderFilter`・反映処理まで動かす。確かめること: フィルターの同期開始と `AsyncLocal` の読み取り、MessagePack の往復、`response is IApiResponse<TCommon>`、生成時に読んだ `[SkipAuth]`・`[NoSideEffects]` の値、複数の引数のタプル。項目ごとの結果をログに出し、全部の項目の後に `AOTCHECK PASS` か `AOTCHECK FAIL <項目>` を出す。プレイヤーでは、定義シンボル `VOLTECH_AOT_CHECK` があるときだけ起動時に動かし、`Application.Quit` の終了コードを成功 0、失敗 1 にする
+*   **Proposed Changes**: サーバーが無くても動くよう、偽の `CallInvoker` で確かめる。パッケージのテストのコードは Sandbox から見えないので、ファイル 43 と同じ振る舞いの小さい偽物をこのファイルの中に持つ。起動時の入口は `[RuntimeInitializeOnLoadMethod]`。クライアントができたら、`[GenerateVoltechApi(typeof(ISmokeService))]` のラッパーを通し、`ApiCore`・`ApiHeaderFilter`・反映処理まで動かす。確かめること: フィルターの同期開始と `AsyncLocal` の読み取り、MessagePack の往復、`response is IApiResponse<TCommon>`、生成時に読んだ `[SkipAuth]`・`[NoSideEffects]` の値、複数の引数のタプル。項目ごとの結果をログに出し、全部の項目の後に `AOTCHECK PASS` か `AOTCHECK FAIL <項目>` を出す。プレイヤーでは、定義シンボル `VOLTECH_AOT_CHECK` があるときだけ起動時に動かし、`Application.Quit` の終了コードを成功 0、失敗 1 にする
 
 #### 47. `Unity/VolTech.Sandbox/Assets/Smoke/Editor/AotCheckRunner.cs` (Create)
 
